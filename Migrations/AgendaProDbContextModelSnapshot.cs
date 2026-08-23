@@ -62,11 +62,13 @@ namespace AgendaApp.Migrations
 
                     b.HasIndex("BusinessId");
 
-                    b.HasIndex("ClientId");
-
-                    b.HasIndex("UserId");
-
                     b.HasIndex("serviceId");
+
+                    b.HasIndex("ClientId", "DateTimeStart")
+                        .HasDatabaseName("IX_Appointments_ClientId_DateTimeStart");
+
+                    b.HasIndex("UserId", "DateTimeStart")
+                        .HasDatabaseName("IX_Appointments_UserId_DateTimeStart");
 
                     b.ToTable("Appointments");
                 });

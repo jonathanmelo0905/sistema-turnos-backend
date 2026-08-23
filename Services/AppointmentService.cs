@@ -68,38 +68,33 @@ namespace AgendaApp.Services
             if (!userExists)
                 return ServiceResult<AppointmentDto>.NotFound($"No existe un usuario con el ID {dto.UserId}.");
 
-            bool overlapBusiness = await _context.Appointments.AnyAsync(a =>
-                a.BusinessId == dto.BusinessId &&
-                (
-                    (dto.DateTimeStart >= a.DateTimeStart && dto.DateTimeStart < a.DateTimeEnd) ||
-                    (dto.DateTimeEnd > a.DateTimeStart && dto.DateTimeEnd <= a.DateTimeEnd) ||
-                    (dto.DateTimeStart <= a.DateTimeStart && dto.DateTimeEnd >= a.DateTimeEnd)
-                )
-            );
-            if (overlapBusiness)
-                return ServiceResult<AppointmentDto>.Conflict("Ya existe una cita en ese horario para el negocio seleccionado.");
+            // 🔒 Sección crítica: bajo transacción + SELECT ... FOR UPDATE para cerrar la carrera
+            // entre el chequeo de solapamiento y el INSERT (ver diseño CU-04). Solo importa
+            // colaborador y cliente — un negocio con varios colaboradores sí puede tener citas
+            // simultáneas con profesionales distintos.
+            await using var transaction = await _context.Database.BeginTransactionAsync();
 
-            bool overlapClient = await _context.Appointments.AnyAsync(a =>
-                a.ClientId == dto.ClientId &&
-                (
-                    (dto.DateTimeStart >= a.DateTimeStart && dto.DateTimeStart < a.DateTimeEnd) ||
-                    (dto.DateTimeEnd > a.DateTimeStart && dto.DateTimeEnd <= a.DateTimeEnd) ||
-                    (dto.DateTimeStart <= a.DateTimeStart && dto.DateTimeEnd >= a.DateTimeEnd)
-                )
-            );
-            if (overlapClient)
-                return ServiceResult<AppointmentDto>.Conflict("El cliente ya tiene una cita programada en ese horario.");
+            var lockedConflicts = await _context.Appointments
+                .FromSqlInterpolated($@"
+                    SELECT * FROM Appointments
+                    WHERE Status <> 'Cancelled'
+                      AND (UserId = {dto.UserId} OR ClientId = {dto.ClientId})
+                      AND DateTimeStart < {dto.DateTimeEnd}
+                      AND DateTimeEnd > {dto.DateTimeStart}
+                    FOR UPDATE")
+                .ToListAsync();
 
-            bool overlapUser = await _context.Appointments.AnyAsync(a =>
-                a.UserId == dto.UserId &&
-                (
-                    (dto.DateTimeStart >= a.DateTimeStart && dto.DateTimeStart < a.DateTimeEnd) ||
-                    (dto.DateTimeEnd > a.DateTimeStart && dto.DateTimeEnd <= a.DateTimeEnd) ||
-                    (dto.DateTimeStart <= a.DateTimeStart && dto.DateTimeEnd >= a.DateTimeEnd)
-                )
-            );
-            if (overlapUser)
+            if (lockedConflicts.Any(a => a.UserId == dto.UserId))
+            {
+                await transaction.RollbackAsync();
                 return ServiceResult<AppointmentDto>.Conflict("El profesional ya tiene una cita programada en ese horario.");
+            }
+
+            if (lockedConflicts.Any(a => a.ClientId == dto.ClientId))
+            {
+                await transaction.RollbackAsync();
+                return ServiceResult<AppointmentDto>.Conflict("El cliente ya tiene una cita programada en ese horario.");
+            }
 
             var appointment = new Appointment
             {
@@ -116,6 +111,7 @@ namespace AgendaApp.Services
 
             _context.Appointments.Add(appointment);
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             _logger.LogInformation("Cita {AppointmentId} creada para negocio {BusinessId}, cliente {ClientId}, profesional {UserId}.",
                 appointment.AppointmentId, appointment.BusinessId, appointment.ClientId, appointment.UserId);
@@ -155,21 +151,31 @@ namespace AgendaApp.Services
             if (!userExists)
                 return ServiceResult<AppointmentDto>.NotFound($"No existe un usuario con el ID {dto.UserId}.");
 
-            bool overlap = await _context.Appointments.AnyAsync(a =>
-                a.AppointmentId != id &&
-                (
-                    (a.BusinessId == dto.BusinessId ||
-                     a.ClientId == dto.ClientId ||
-                     a.UserId == dto.UserId)
-                ) &&
-                (
-                    (dto.DateTimeStart >= a.DateTimeStart && dto.DateTimeStart < a.DateTimeEnd) ||
-                    (dto.DateTimeEnd > a.DateTimeStart && dto.DateTimeEnd <= a.DateTimeEnd) ||
-                    (dto.DateTimeStart <= a.DateTimeStart && dto.DateTimeEnd >= a.DateTimeEnd)
-                )
-            );
-            if (overlap)
-                return ServiceResult<AppointmentDto>.Conflict("El horario se solapa con otra cita existente para el negocio, cliente o profesional.");
+            // 🔒 Misma sección crítica que en CreateAppointmentAsync — ver diseño CU-04.
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+
+            var lockedConflicts = await _context.Appointments
+                .FromSqlInterpolated($@"
+                    SELECT * FROM Appointments
+                    WHERE Status <> 'Cancelled'
+                      AND AppointmentId <> {id}
+                      AND (UserId = {dto.UserId} OR ClientId = {dto.ClientId})
+                      AND DateTimeStart < {dto.DateTimeEnd}
+                      AND DateTimeEnd > {dto.DateTimeStart}
+                    FOR UPDATE")
+                .ToListAsync();
+
+            if (lockedConflicts.Any(a => a.UserId == dto.UserId))
+            {
+                await transaction.RollbackAsync();
+                return ServiceResult<AppointmentDto>.Conflict("El profesional ya tiene una cita programada en ese horario.");
+            }
+
+            if (lockedConflicts.Any(a => a.ClientId == dto.ClientId))
+            {
+                await transaction.RollbackAsync();
+                return ServiceResult<AppointmentDto>.Conflict("El cliente ya tiene una cita programada en ese horario.");
+            }
 
             appointment.BusinessId = dto.BusinessId;
             appointment.ClientId = dto.ClientId;
@@ -181,6 +187,7 @@ namespace AgendaApp.Services
 
             _context.Appointments.Update(appointment);
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             _logger.LogInformation("Cita {AppointmentId} actualizada.", id);
 

@@ -98,6 +98,16 @@ namespace AgendaApp.Context
                 .HasMany(b => b.BusinessSchedules)
                 .WithOne(bs => bs.Business)
                 .HasForeignKey(bs => bs.BusinessId);
+
+            // 🔒 Índices para que el SELECT ... FOR UPDATE de no-solapamiento (CU-04) bloquee
+            // solo el rango de fechas relevante por colaborador/cliente, no toda su historia.
+            modelBuilder.Entity<Appointment>()
+                .HasIndex(a => new { a.UserId, a.DateTimeStart })
+                .HasDatabaseName("IX_Appointments_UserId_DateTimeStart");
+
+            modelBuilder.Entity<Appointment>()
+                .HasIndex(a => new { a.ClientId, a.DateTimeStart })
+                .HasDatabaseName("IX_Appointments_ClientId_DateTimeStart");
         }
     }
 }

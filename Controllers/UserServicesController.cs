@@ -33,8 +33,7 @@ namespace AgendaApp.Controllers
             {
                 ServiceErrorType.BadRequest => BadRequest(result.Error),
                 _ => Ok(new { message = "Servicios asignados correctamente." })
-            };
-        }
+            };        }
 
         [HttpDelete("{serviceId}")]
         public async Task<IActionResult> RemoveUserService(Guid userId, Guid serviceId)
