@@ -48,6 +48,7 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ITimeOffService, TimeOffService>();
 builder.Services.AddScoped<IPublicService, PublicService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IStatsService, StatsService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();
@@ -94,6 +95,15 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     await SlugHelper.BackfillAsync(scope.ServiceProvider.GetRequiredService<AgendaProDbContext>());
+}
+
+// Solo desarrollo: "dotnet run -- seed-historial" genera historial demo y termina
+if (args.Contains("seed-historial") && app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    await DemoHistorySeeder.RunAsync(scope.ServiceProvider.GetRequiredService<AgendaProDbContext>(),
+        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Seed"));
+    return;
 }
 
 // Configure the HTTP request pipeline.

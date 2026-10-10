@@ -26,6 +26,7 @@ namespace AgendaApp.Context
         public DbSet<TimeOffRequest> TimeOffRequests { get; set; }
         public DbSet<AppointmentHistory> AppointmentHistory { get; set; }
         public DbSet<StaffNotification> StaffNotifications { get; set; }
+        public DbSet<Review> Reviews { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -118,6 +119,13 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Business>().HasIndex(b => b.Slug).IsUnique().HasDatabaseName("IX_Businesses_Slug");
             modelBuilder.Entity<Business>().Property(b => b.CancelLimitHours).HasDefaultValue(2);
             modelBuilder.Entity<Client>().HasIndex(c => c.AccessToken).HasDatabaseName("IX_Clients_AccessToken");
+
+            foreach (var prop in new[] { "ReviewId", "BusinessId", "AppointmentId", "ClientId", "UserId", "ServiceId", "RepliedByUserId" })
+                modelBuilder.Entity<Review>().Property(prop).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<Review>().HasIndex(r => r.AppointmentId).IsUnique().HasDatabaseName("IX_Reviews_Appointment");
+            modelBuilder.Entity<Review>().HasIndex(r => new { r.BusinessId, r.CreatedAt }).HasDatabaseName("IX_Reviews_Business");
+            modelBuilder.Entity<Review>().HasOne(r => r.Appointment).WithMany().HasForeignKey(r => r.AppointmentId);
+            modelBuilder.Entity<Review>().HasOne(r => r.Client).WithMany().HasForeignKey(r => r.ClientId);
 
             foreach (var prop in new[] { "NotificationId", "BusinessId", "UserId", "AppointmentId" })
                 modelBuilder.Entity<StaffNotification>().Property(prop).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");

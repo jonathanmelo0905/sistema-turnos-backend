@@ -21,6 +21,9 @@ namespace AgendaApp.Dtos
         public List<PublicCategoryDto> Categories { get; set; } = new();
         public List<PublicServiceDto> Services { get; set; } = new();
         public List<PublicStaffDto> Staff { get; set; } = new();
+        public double RatingAverage { get; set; }
+        public int RatingCount { get; set; }
+        public List<PublicReviewDto> Reviews { get; set; } = new();
     }
 
     public class PublicCategoryDto
@@ -104,6 +107,8 @@ namespace AgendaApp.Dtos
         public string StaffName { get; set; } = null!;
         public bool CanCancel { get; set; }
         public string? CancelReason { get; set; }
+        public bool CanReview { get; set; }
+        public int? MyRating { get; set; }
     }
 
     public class PublicBookResultDto

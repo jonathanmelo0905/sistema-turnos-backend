@@ -460,6 +460,85 @@ namespace AgendaApp.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
+            modelBuilder.Entity("AgendaApp.Context.Review", b =>
+                {
+                    b.Property<Guid>("ReviewId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("ReviewId"), "utf8mb4");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("AppointmentId"), "utf8mb4");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("BusinessId"), "utf8mb4");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("ClientId"), "utf8mb4");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("Hidden")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RepliedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("RepliedByUserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid?>("RepliedByUserId"), "utf8mb4");
+
+                    b.Property<string>("Reply")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("ServiceId"), "utf8mb4");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("UserId"), "utf8mb4");
+
+                    b.HasKey("ReviewId");
+
+                    b.HasIndex("AppointmentId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Reviews_Appointment");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("BusinessId", "CreatedAt")
+                        .HasDatabaseName("IX_Reviews_Business");
+
+                    b.ToTable("Reviews");
+                });
+
             modelBuilder.Entity("AgendaApp.Context.Service", b =>
                 {
                     b.Property<Guid>("ServiceId")
@@ -885,6 +964,25 @@ namespace AgendaApp.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.Review", b =>
+                {
+                    b.HasOne("AgendaApp.Context.Appointment", "Appointment")
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AgendaApp.Context.Client", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+
+                    b.Navigation("Client");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.Service", b =>

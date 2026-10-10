@@ -61,6 +61,14 @@ namespace AgendaApp.Controllers
             return Map(await _public.CancelAsync(slug, id, dto));
         }
 
+        // Calificar una atención (solo turnos atendidos, una vez)
+        [HttpPost("businesses/{slug}/appointments/{id:guid}/review")]
+        public async Task<ActionResult<PublicAppointmentDto>> Review(string slug, Guid id, [FromBody] PublicReviewCreateDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            return Map(await _public.ReviewAsync(slug, id, dto));
+        }
+
         private ActionResult<T> Map<T>(ServiceResult<T> r) => r.ErrorType switch
         {
             ServiceErrorType.NotFound => NotFound(r.Error),

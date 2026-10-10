@@ -14,6 +14,7 @@ namespace AgendaApp.Services
         Task<ServiceResult<PublicMyAppointmentsDto>> MyAppointmentsAsync(string slug, string accessToken);
         Task<ServiceResult<PublicMyAppointmentsDto>> LookupAsync(string slug, PublicLookupDto dto);
         Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, Guid appointmentId, PublicCancelDto dto);
+        Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto);
     }
 
     public class PublicService : IPublicService
@@ -22,13 +23,15 @@ namespace AgendaApp.Services
         private readonly IAppointmentService _appointments;
         private readonly AvailabilityService _availability;
         private readonly ILogger<PublicService> _logger;
+        private readonly INotificationService _notify;
 
-        public PublicService(AgendaProDbContext context, IAppointmentService appointments, AvailabilityService availability, ILogger<PublicService> logger)
+        public PublicService(AgendaProDbContext context, IAppointmentService appointments, AvailabilityService availability, ILogger<PublicService> logger, INotificationService notify)
         {
             _context = context;
             _appointments = appointments;
             _availability = availability;
             _logger = logger;
+            _notify = notify;
         }
 
         public async Task<List<PublicBusinessListItemDto>> ListBusinessesAsync() =>
@@ -88,8 +91,28 @@ namespace AgendaApp.Services
                 .Select(s => new BusinessScheduleDayDto { DayOfWeek = s.DayOfWeek, IsOpen = s.IsOpen, OpenTime = s.OpenTime, CloseTime = s.CloseTime })
                 .ToListAsync();
 
+            var visibles = _context.Reviews.AsNoTracking().Where(r => r.BusinessId == b.BusinessId && !r.Hidden);
+            var ratingCount = await visibles.CountAsync();
+            var ratingAvg = ratingCount > 0 ? await visibles.AverageAsync(r => r.Rating) : 0;
+            var ultimas = await visibles.OrderByDescending(r => r.Comment != null).ThenByDescending(r => r.CreatedAt).Take(6)
+                .Select(r => new PublicReviewDto
+                {
+                    Rating = r.Rating,
+                    Comment = r.Comment,
+                    ClientName = r.Client.Name ?? "Cliente",
+                    ServiceName = r.Appointment.Service.Name,
+                    StaffName = r.Appointment.User.Name,
+                    CreatedAt = r.CreatedAt,
+                    Reply = r.Reply
+                }).ToListAsync();
+            // Privacidad: solo el primer nombre del cliente y del profesional
+            ultimas.ForEach(r => { r.ClientName = r.ClientName.Split(' ')[0]; r.StaffName = r.StaffName?.Split(' ')[0]; });
+
             return new PublicBusinessDto
             {
+                RatingAverage = Math.Round(ratingAvg, 1),
+                RatingCount = ratingCount,
+                Reviews = ultimas,
                 BusinessId = b.BusinessId,
                 Slug = b.Slug!,
                 Name = b.Name,
@@ -233,6 +256,45 @@ namespace AgendaApp.Services
             return ServiceResult<PublicAppointmentDto>.Ok((await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == appointmentId)).First());
         }
 
+        public async Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto)
+        {
+            var b = await FindBusinessAsync(slug);
+            if (b == null) return ServiceResult<PublicAppointmentDto>.NotFound("Empresa no encontrada.");
+
+            var a = await _context.Appointments.Include(x => x.Client)
+                .FirstOrDefaultAsync(x => x.AppointmentId == appointmentId && x.BusinessId == b.BusinessId);
+            if (a == null || a.Client.AccessToken != dto.AccessToken)
+                return ServiceResult<PublicAppointmentDto>.NotFound("Turno no encontrado.");
+            if (a.Status != AppointmentStatus.Completed)
+                return ServiceResult<PublicAppointmentDto>.BadRequest("Solo puedes calificar una atención que ya se realizó.");
+            if (await _context.Reviews.AnyAsync(r => r.AppointmentId == appointmentId))
+                return ServiceResult<PublicAppointmentDto>.Conflict("Ya calificaste esta atención. ¡Gracias!");
+
+            _context.Reviews.Add(new Review
+            {
+                ReviewId = Guid.NewGuid(),
+                BusinessId = b.BusinessId,
+                AppointmentId = appointmentId,
+                ClientId = a.ClientId,
+                UserId = a.UserId,
+                ServiceId = a.serviceId,
+                Rating = dto.Rating,
+                Comment = string.IsNullOrWhiteSpace(dto.Comment) ? null : dto.Comment.Trim(),
+                CreatedAt = DateTime.UtcNow
+            });
+            await _notifyReview(b.BusinessId, a, dto.Rating);
+            await _context.SaveChangesAsync();
+
+            return ServiceResult<PublicAppointmentDto>.Ok((await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == appointmentId)).First());
+        }
+
+        private async Task _notifyReview(Guid businessId, Appointment a, int rating)
+        {
+            var estrellas = new string('★', rating) + new string('☆', 5 - rating);
+            await _notify.NotifyAsync(businessId, (await _notify.OwnersAsync(businessId)).Append(a.UserId), NotificationTypes.NewReview,
+                $"Nueva reseña {estrellas}", $"{a.Client.Name} calificó su visita.", "resenas", a.AppointmentId);
+        }
+
         // ---------------------------------------------------------------- Auxiliares
 
         private Task<Business?> FindBusinessAsync(string slug) =>
@@ -302,7 +364,9 @@ namespace AgendaApp.Services
                     StaffName = a.User.Name,
                     CancelReason = a.CancelReason,
                     CanCancel = (a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.PendingOutOfHours)
-                        && a.DateTimeStart >= limite
+                        && a.DateTimeStart >= limite,
+                    MyRating = _context.Reviews.Where(r => r.AppointmentId == a.AppointmentId).Select(r => (int?)r.Rating).FirstOrDefault(),
+                    CanReview = a.Status == AppointmentStatus.Completed && !_context.Reviews.Any(r => r.AppointmentId == a.AppointmentId)
                 })
                 .ToListAsync();
             lista.ForEach(a => a.Code = Code(a.AppointmentId));
