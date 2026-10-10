@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using AgendaApp.Context;
 using AgendaApp.Dtos;
 using AgendaApp.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -10,10 +12,12 @@ namespace AgendaApp.Controllers
     public class AppointmentsController : ControllerBase
     {
         private readonly IAppointmentService _appointmentService;
+        private readonly IPermissionService _permissionService;
 
-        public AppointmentsController(IAppointmentService appointmentService)
+        public AppointmentsController(IAppointmentService appointmentService, IPermissionService permissionService)
         {
             _appointmentService = appointmentService;
+            _permissionService = permissionService;
         }
 
         [HttpGet]
@@ -79,6 +83,62 @@ namespace AgendaApp.Controllers
                 ServiceErrorType.NotFound => NotFound(result.Error),
                 _ => NoContent()
             };
+        }
+
+        // Puede aprobar/rechazar: el colaborador dueño de la cita, o quien tenga flexibility.approve
+        // (Owner incluido por el bypass de rol).
+        [HttpPost("{id:guid}/approve")]
+        [Authorize]
+        public async Task<IActionResult> ApproveOutOfHours(Guid id)
+        {
+            var (callerId, canActOnBehalf) = await ResolveCallerAsync();
+            if (callerId == null)
+                return Unauthorized("Token inválido: no contiene el identificador del usuario.");
+
+            var result = await _appointmentService.ApproveOutOfHoursAsync(id, callerId.Value, canActOnBehalf);
+
+            return result.ErrorType switch
+            {
+                ServiceErrorType.NotFound => NotFound(result.Error),
+                ServiceErrorType.BadRequest => BadRequest(result.Error),
+                ServiceErrorType.Unauthorized => Forbid(),
+                _ => Ok(result.Data)
+            };
+        }
+
+        [HttpPost("{id:guid}/reject")]
+        [Authorize]
+        public async Task<IActionResult> RejectOutOfHours(Guid id)
+        {
+            var (callerId, canActOnBehalf) = await ResolveCallerAsync();
+            if (callerId == null)
+                return Unauthorized("Token inválido: no contiene el identificador del usuario.");
+
+            var result = await _appointmentService.RejectOutOfHoursAsync(id, callerId.Value, canActOnBehalf);
+
+            return result.ErrorType switch
+            {
+                ServiceErrorType.NotFound => NotFound(result.Error),
+                ServiceErrorType.BadRequest => BadRequest(result.Error),
+                ServiceErrorType.Unauthorized => Forbid(),
+                _ => Ok(result.Data)
+            };
+        }
+
+        // Resuelve el UserId del caller y si puede actuar en nombre de otro colaborador
+        // (Owner por bypass de rol, o Encargado con flexibility.approve otorgado).
+        private async Task<(Guid? CallerId, bool CanActOnBehalf)> ResolveCallerAsync()
+        {
+            var callerIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+            if (!Guid.TryParse(callerIdClaim, out var callerId))
+                return (null, false);
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            if (role == Roles.Owner)
+                return (callerId, true);
+
+            var grantedCodes = await _permissionService.GetGrantedCodesAsync(callerId);
+            return (callerId, grantedCodes.Contains(PermissionCodes.FlexibilityApprove));
         }
     }
 }

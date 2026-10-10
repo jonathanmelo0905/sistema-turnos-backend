@@ -25,6 +25,10 @@ namespace AgendaApp.Context
         [Required]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        // Política de flexibilidad (CU-05): permite crear citas fuera del horario declarado
+        // del colaborador en estado "PendingOutOfHours", sujetas a aprobación.
+        public bool AllowOutOfHoursBooking { get; set; } = false;
+
         // 🔗 Relación con Users
         public ICollection<User> Users { get; set; } = new List<User>();
 

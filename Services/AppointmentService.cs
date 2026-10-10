@@ -49,16 +49,28 @@ namespace AgendaApp.Services
 
         public async Task<ServiceResult<AppointmentDto>> CreateAppointmentAsync(AppointmentCreateDto dto)
         {
-            var validacion = await _availabilityService.IsUserAvailable(dto.UserId, dto.DateTimeStart, dto.DateTimeEnd, dto.serviceId);
-            if (!validacion.Status)
-                return ServiceResult<AppointmentDto>.BadRequest(validacion.Mensaje);
-
             if (dto.DateTimeEnd <= dto.DateTimeStart)
                 return ServiceResult<AppointmentDto>.BadRequest("La fecha de finalización debe ser posterior a la fecha de inicio.");
 
-            var businessExists = await _context.Businesses.AnyAsync(b => b.BusinessId == dto.BusinessId);
-            if (!businessExists)
+            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.BusinessId == dto.BusinessId);
+            if (business == null)
                 return ServiceResult<AppointmentDto>.NotFound($"No existe un negocio con el ID {dto.BusinessId}.");
+
+            // 🕗 Bloque 1: chequeo de horario declarado. Este es el ÚNICO motivo que la
+            // flexibilidad de CU-05 puede saltear, y solo si el negocio lo permite — el
+            // solapamiento con otra cita (bloque 2, sección CU-04 más abajo) nunca se ve
+            // afectado por este toggle.
+            var validacion = await _availabilityService.IsUserAvailable(dto.UserId, dto.DateTimeStart, dto.DateTimeEnd, dto.serviceId);
+
+            var isOutOfHoursPending = false;
+
+            if (!validacion.Status)
+            {
+                if (validacion.Reason == AvailabilityReason.OutOfSchedule && business.AllowOutOfHoursBooking)
+                    isOutOfHoursPending = true;
+                else
+                    return ServiceResult<AppointmentDto>.BadRequest(validacion.Mensaje);
+            }
 
             var clientExists = await _context.Clients.AnyAsync(c => c.ClientId == dto.ClientId);
             if (!clientExists)
@@ -68,16 +80,17 @@ namespace AgendaApp.Services
             if (!userExists)
                 return ServiceResult<AppointmentDto>.NotFound($"No existe un usuario con el ID {dto.UserId}.");
 
-            // 🔒 Sección crítica: bajo transacción + SELECT ... FOR UPDATE para cerrar la carrera
-            // entre el chequeo de solapamiento y el INSERT (ver diseño CU-04). Solo importa
-            // colaborador y cliente — un negocio con varios colaboradores sí puede tener citas
-            // simultáneas con profesionales distintos.
+            // 🔒 Bloque 2: sección crítica bajo transacción + SELECT ... FOR UPDATE para cerrar
+            // la carrera entre el chequeo de solapamiento y el INSERT (ver diseño CU-04). Se
+            // ejecuta siempre, sin importar isOutOfHoursPending — el toggle del negocio nunca
+            // afecta esta validación. Solo importa colaborador y cliente — un negocio con
+            // varios colaboradores sí puede tener citas simultáneas con profesionales distintos.
             await using var transaction = await _context.Database.BeginTransactionAsync();
 
             var lockedConflicts = await _context.Appointments
                 .FromSqlInterpolated($@"
                     SELECT * FROM Appointments
-                    WHERE Status <> 'Cancelled'
+                    WHERE Status <> 'Cancelled' AND Status <> 'RejectedOutOfHours'
                       AND (UserId = {dto.UserId} OR ClientId = {dto.ClientId})
                       AND DateTimeStart < {dto.DateTimeEnd}
                       AND DateTimeEnd > {dto.DateTimeStart}
@@ -104,7 +117,7 @@ namespace AgendaApp.Services
                 UserId = dto.UserId,
                 DateTimeStart = dto.DateTimeStart,
                 DateTimeEnd = dto.DateTimeEnd,
-                Status = "Pending",
+                Status = isOutOfHoursPending ? "PendingOutOfHours" : "Pending",
                 serviceId = dto.serviceId,
                 CreatedAt = DateTime.UtcNow
             };
@@ -113,8 +126,8 @@ namespace AgendaApp.Services
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            _logger.LogInformation("Cita {AppointmentId} creada para negocio {BusinessId}, cliente {ClientId}, profesional {UserId}.",
-                appointment.AppointmentId, appointment.BusinessId, appointment.ClientId, appointment.UserId);
+            _logger.LogInformation("Cita {AppointmentId} creada para negocio {BusinessId}, cliente {ClientId}, profesional {UserId} (Status={Status}).",
+                appointment.AppointmentId, appointment.BusinessId, appointment.ClientId, appointment.UserId, appointment.Status);
 
             return ServiceResult<AppointmentDto>.Ok(new AppointmentDto
             {
@@ -157,7 +170,7 @@ namespace AgendaApp.Services
             var lockedConflicts = await _context.Appointments
                 .FromSqlInterpolated($@"
                     SELECT * FROM Appointments
-                    WHERE Status <> 'Cancelled'
+                    WHERE Status <> 'Cancelled' AND Status <> 'RejectedOutOfHours'
                       AND AppointmentId <> {id}
                       AND (UserId = {dto.UserId} OR ClientId = {dto.ClientId})
                       AND DateTimeStart < {dto.DateTimeEnd}
@@ -217,5 +230,58 @@ namespace AgendaApp.Services
             _logger.LogInformation("Cita {AppointmentId} eliminada.", id);
             return ServiceResult.Ok();
         }
+
+        public async Task<ServiceResult<AppointmentDto>> ApproveOutOfHoursAsync(Guid id, Guid callerId, bool callerCanActOnBehalf)
+        {
+            var appointment = await _context.Appointments.FindAsync(id);
+            if (appointment == null)
+                return ServiceResult<AppointmentDto>.NotFound("No se encontró la cita especificada.");
+
+            if (appointment.UserId != callerId && !callerCanActOnBehalf)
+                return ServiceResult<AppointmentDto>.Unauthorized("No tenés permiso para aprobar esta cita.");
+
+            if (appointment.Status != "PendingOutOfHours")
+                return ServiceResult<AppointmentDto>.BadRequest("La cita no está pendiente de aprobación por horario.");
+
+            appointment.Status = "Confirmed";
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Cita {AppointmentId} aprobada (fuera de horario) por {CallerId}.", id, callerId);
+
+            return ServiceResult<AppointmentDto>.Ok(ToDto(appointment));
+        }
+
+        public async Task<ServiceResult<AppointmentDto>> RejectOutOfHoursAsync(Guid id, Guid callerId, bool callerCanActOnBehalf)
+        {
+            var appointment = await _context.Appointments.FindAsync(id);
+            if (appointment == null)
+                return ServiceResult<AppointmentDto>.NotFound("No se encontró la cita especificada.");
+
+            if (appointment.UserId != callerId && !callerCanActOnBehalf)
+                return ServiceResult<AppointmentDto>.Unauthorized("No tenés permiso para rechazar esta cita.");
+
+            if (appointment.Status != "PendingOutOfHours")
+                return ServiceResult<AppointmentDto>.BadRequest("La cita no está pendiente de aprobación por horario.");
+
+            appointment.Status = "RejectedOutOfHours";
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Cita {AppointmentId} rechazada (fuera de horario) por {CallerId}.", id, callerId);
+
+            return ServiceResult<AppointmentDto>.Ok(ToDto(appointment));
+        }
+
+        private static AppointmentDto ToDto(Appointment appointment) => new()
+        {
+            AppointmentId = appointment.AppointmentId,
+            BusinessId = appointment.BusinessId,
+            ClientId = appointment.ClientId,
+            UserId = appointment.UserId,
+            DateTimeStart = appointment.DateTimeStart,
+            DateTimeEnd = appointment.DateTimeEnd,
+            Status = appointment.Status,
+            CreatedAt = appointment.CreatedAt,
+            ServiceId = appointment.serviceId
+        };
     }
 }

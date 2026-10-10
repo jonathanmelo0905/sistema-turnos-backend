@@ -5,5 +5,6 @@
         public bool Status { get; set; }
         public required string Mensaje { get; set; }
         public object? Data { get; set; }
+        public AvailabilityReason Reason { get; set; } = AvailabilityReason.Available;
     }
 }

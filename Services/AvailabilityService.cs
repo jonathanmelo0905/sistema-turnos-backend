@@ -28,33 +28,35 @@ namespace AgendaApp.Services
                 .FirstOrDefaultAsync(s => s.ServiceId == serviceId);
 
             if (service == null)
-                return new ResultadoService { Status = false, Mensaje = "El servicio no existe, no puede continuar" };
+                return new ResultadoService { Status = false, Mensaje = "El servicio no existe, no puede continuar", Reason = AvailabilityReason.ServiceNotFound };
 
             // 🧩 0️⃣.2 Validar que el usuario ofrezca este servicio
             var userProvidesService = await _context.UserServices
                 .AnyAsync(us => us.UserId == userId && us.ServiceId == serviceId);
 
             if (!userProvidesService)
-                return new ResultadoService { Status = false, Mensaje = "el colaborador no presta este servicio, no puede agendarse" };
+                return new ResultadoService { Status = false, Mensaje = "el colaborador no presta este servicio, no puede agendarse", Reason = AvailabilityReason.ServiceNotProvided };
 
             var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
             if (user == null)
-                return new ResultadoService { Status = false, Mensaje = "El colaborador no existe" };
+                return new ResultadoService { Status = false, Mensaje = "El colaborador no existe", Reason = AvailabilityReason.UserNotFound };
 
             // 🧩 1️⃣-3️⃣ Intersección empresa ∩ colaborador, menos almuerzo y excepciones (lógica compartida con GetAvailableSlotsAsync)
             var dayIntervals = await GetDayIntervalsAsync(userId, user.BusinessId, start.Date);
 
             if (dayIntervals.Count == 0)
-                return new ResultadoService { Status = false, Mensaje = "El colaborador no tiene disponibilidad ese día (negocio cerrado, sin horario configurado, o excepción de día completo)." };
+                return new ResultadoService { Status = false, Mensaje = "El colaborador no tiene disponibilidad ese día (negocio cerrado, sin horario configurado, o excepción de día completo).", Reason = AvailabilityReason.OutOfSchedule };
 
             var fits = dayIntervals.Any(interval => start.TimeOfDay >= interval.Start && end.TimeOfDay <= interval.End);
             if (!fits)
-                return new ResultadoService { Status = false, Mensaje = "El horario solicitado no está disponible (fuera de horario, cruza el almuerzo, o coincide con una excepción)." };
+                return new ResultadoService { Status = false, Mensaje = "El horario solicitado no está disponible (fuera de horario, cruza el almuerzo, o coincide con una excepción).", Reason = AvailabilityReason.OutOfSchedule };
 
-            // 4️⃣ Verificar solapamiento con otras citas
+            // 4️⃣ Verificar solapamiento con otras citas (excluye canceladas y turnos fuera de
+            // horario rechazados — ninguno de los dos sigue ocupando el horario)
             var overlapping = await _context.Appointments.AnyAsync(a =>
                 a.UserId == userId &&
                 a.Status != "Cancelled" &&
+                a.Status != "RejectedOutOfHours" &&
                 (
                     (start >= a.DateTimeStart && start < a.DateTimeEnd) ||
                     (end > a.DateTimeStart && end <= a.DateTimeEnd) ||
@@ -65,11 +67,11 @@ namespace AgendaApp.Services
             if (overlapping)
             {
                 _logger.LogInformation("Disponibilidad rechazada para usuario {UserId}: solapamiento con otra cita.", userId);
-                return new ResultadoService { Status = false, Mensaje = "solapamiento con otras citas" };
+                return new ResultadoService { Status = false, Mensaje = "solapamiento con otras citas", Reason = AvailabilityReason.OverlapsAppointment };
             }
 
             // ✅ Si pasa todas las validaciones, está disponible
-            return new ResultadoService { Status = true, Mensaje = "pasa todas las validaciones, está disponible" };
+            return new ResultadoService { Status = true, Mensaje = "pasa todas las validaciones, está disponible", Reason = AvailabilityReason.Available };
         }
 
         /// <summary>
@@ -122,7 +124,10 @@ namespace AgendaApp.Services
 
                 // Restar citas existentes de ese día
                 var appointments = await _context.Appointments
-                    .Where(a => a.UserId == userId && a.Status != "Cancelled" && a.DateTimeStart.Date == date)
+                    .Where(a => a.UserId == userId
+                        && a.Status != "Cancelled"
+                        && a.Status != "RejectedOutOfHours"
+                        && a.DateTimeStart.Date == date)
                     .ToListAsync();
 
                 foreach (var appt in appointments)
