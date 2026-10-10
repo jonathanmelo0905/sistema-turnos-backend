@@ -35,5 +35,16 @@ namespace AgendaApp.Controllers
                 _ => Ok(result.Data)
             };
         }
+
+        // GET /api/availability/service?businessId=&serviceId=&date=
+        // Quién presta el servicio y a qué horas puede empezar ese día (reserva con "cualquiera")
+        [HttpGet("service")]
+        [AllowAnonymous]
+        public async Task<ActionResult<List<StaffAvailabilityDto>>> GetServiceAvailability(
+            [FromQuery] Guid businessId, [FromQuery] Guid serviceId, [FromQuery] DateTime date)
+        {
+            var result = await _availabilityService.GetServiceAvailabilityAsync(businessId, serviceId, date);
+            return result.ErrorType == ServiceErrorType.NotFound ? NotFound(result.Error) : Ok(result.Data);
+        }
     }
 }

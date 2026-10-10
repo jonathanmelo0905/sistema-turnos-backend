@@ -21,7 +21,7 @@ namespace AgendaApp.Services
         /// <summary>
         /// ✅ Verifica si un colaborador (usuario) está disponible en un rango de tiempo específico.
         /// </summary>
-        public async Task<ResultadoService> IsUserAvailable(Guid userId, DateTime start, DateTime end, Guid serviceId)
+        public async Task<ResultadoService> IsUserAvailable(Guid userId, DateTime start, DateTime end, Guid serviceId, Guid? excludeAppointmentId = null)
         {
             // 🧩 0️⃣ Validar que el servicio exista
             var service = await _context.Services
@@ -63,6 +63,7 @@ namespace AgendaApp.Services
             // horario rechazados — ninguno de los dos sigue ocupando el horario)
             var overlapping = await _context.Appointments.AnyAsync(a =>
                 a.UserId == userId &&
+                a.AppointmentId != excludeAppointmentId &&
                 a.Status != "Cancelled" &&
                 a.Status != "RejectedOutOfHours" &&
                 (
@@ -171,6 +172,38 @@ namespace AgendaApp.Services
             }
 
             return ServiceResult<AvailabilityResponseDto>.Ok(response);
+        }
+
+        /// <summary>
+        /// Para reservar: quién presta el servicio y a qué horas puede empezar ese día.
+        /// </summary>
+        public async Task<ServiceResult<List<StaffAvailabilityDto>>> GetServiceAvailabilityAsync(Guid businessId, Guid serviceId, DateTime date)
+        {
+            var service = await _context.Services.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ServiceId == serviceId && s.BusinessId == businessId && s.Active);
+            if (service == null)
+                return ServiceResult<List<StaffAvailabilityDto>>.NotFound("El servicio no existe o está desactivado.");
+
+            var staff = await _context.UserServices.AsNoTracking()
+                .Where(us => us.ServiceId == serviceId && us.User.Active && us.User.BusinessId == businessId)
+                .Select(us => new { us.UserId, us.User.Name })
+                .OrderBy(u => u.Name)
+                .ToListAsync();
+
+            var result = new List<StaffAvailabilityDto>();
+            foreach (var u in staff)
+            {
+                var day = await GetAvailableSlotsAsync(u.UserId, serviceId, date.Date, date.Date);
+                var d = day.Data?.Days.FirstOrDefault();
+                result.Add(new StaffAvailabilityDto
+                {
+                    UserId = u.UserId,
+                    Name = u.Name,
+                    Starts = d?.Starts ?? new List<DateTime>(),
+                    TimeOff = d?.TimeOff
+                });
+            }
+            return ServiceResult<List<StaffAvailabilityDto>>.Ok(result);
         }
 
         /// <summary>

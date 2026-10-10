@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AgendaApp.Context
@@ -29,6 +29,27 @@ namespace AgendaApp.Context
         [Required]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid serviceId {  get; set; }
+
+        // Precio del servicio al momento de reservar (las estadísticas no cambian si luego cambia el catálogo)
+        [Column(TypeName = "decimal(10,2)")]
+        public decimal? Price { get; set; }
+
+        [MaxLength(300)]
+        public string? Notes { get; set; }
+
+        [MaxLength(250)]
+        public string? CancelReason { get; set; }
+
+        // Mostrador (lo crea el personal) o Web (lo reserva el cliente)
+        [MaxLength(20)]
+        public string Source { get; set; } = "Mostrador";
+
+        public Guid? CreatedByUserId { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+
+        public ICollection<AppointmentHistory> History { get; set; } = new List<AppointmentHistory>();
 
         // 🔗 Relaciones
         [ForeignKey("BusinessId")]

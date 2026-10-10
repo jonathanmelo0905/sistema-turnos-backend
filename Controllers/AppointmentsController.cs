@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using AgendaApp.Authorization;
 using AgendaApp.Context;
 using AgendaApp.Dtos;
 using AgendaApp.Services;
@@ -7,138 +7,126 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AgendaApp.Controllers
 {
+    // Turnos de la empresa del token. Cada colaborador gestiona los suyos; quien tiene
+    // collaborators.manage (o el dueño) gestiona los de todo el equipo.
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class AppointmentsController : ControllerBase
     {
-        private readonly IAppointmentService _appointmentService;
-        private readonly IPermissionService _permissionService;
+        private readonly IAppointmentService _appointments;
+        private readonly ITenantGuard _tenant;
 
-        public AppointmentsController(IAppointmentService appointmentService, IPermissionService permissionService)
+        public AppointmentsController(IAppointmentService appointments, ITenantGuard tenant)
         {
-            _appointmentService = appointmentService;
-            _permissionService = permissionService;
+            _appointments = appointments;
+            _tenant = tenant;
         }
 
+        private Task<bool> GestionaEquipo() => _tenant.HasPermissionAsync(PermissionCodes.CollaboratorsManage);
+
+        // GET /api/appointments?from=&to=&userId=&status=
         [HttpGet]
-        [Authorize]
-        public async Task<ActionResult<IEnumerable<AppointmentDto>>> GetAppointments([FromQuery] Guid businessId)
+        public async Task<ActionResult<List<AppointmentDto>>> List(
+            [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] Guid? userId, [FromQuery] string? status)
         {
-            if (businessId == Guid.Empty)
-                return BadRequest("El parámetro 'businessId' es obligatorio.");
+            if (!await GestionaEquipo()) userId = _tenant.UserId;
+            var desde = from ?? DateTime.Today;
+            var hasta = to ?? desde;
+            if (hasta < desde) return BadRequest("La fecha final no puede ser anterior a la inicial.");
 
-            var result = await _appointmentService.GetAppointmentsAsync(businessId);
-
-            return result.ErrorType switch
-            {
-                ServiceErrorType.NotFound => NotFound(result.Error),
-                _ => Ok(result.Data)
-            };
+            return Ok(await _appointments.ListAsync(_tenant.BusinessId, desde, hasta, userId, status));
         }
 
+        [HttpGet("{id:guid}")]
+        public async Task<ActionResult<AppointmentDetailDto>> Get(Guid id)
+        {
+            var a = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (a == null) return NotFound();
+            if (a.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            return Ok(a);
+        }
+
+        // POST /api/appointments/book — reserva desde el panel (mostrador)
+        [HttpPost("book")]
+        public async Task<ActionResult<AppointmentDto>> Book([FromBody] AppointmentBookDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            if (dto.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+
+            return Map(await _appointments.BookAsync(_tenant.BusinessId, _tenant.UserId, "Mostrador", dto));
+        }
+
+        // Contrato anterior (fin explícito): se mantiene por compatibilidad
         [HttpPost]
-        [Authorize]
-        public async Task<IActionResult> CreateAppointment([FromBody] AppointmentCreateDto dto)
+        public async Task<ActionResult<AppointmentDto>> Create([FromBody] AppointmentCreateDto dto)
         {
-            if (dto == null)
-                return BadRequest("Los datos de la cita son requeridos.");
+            if (dto == null) return BadRequest("Los datos de la cita son requeridos.");
+            if (dto.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
 
-            var result = await _appointmentService.CreateAppointmentAsync(dto);
-
-            return result.ErrorType switch
-            {
-                ServiceErrorType.BadRequest => BadRequest(result.Error),
-                ServiceErrorType.NotFound => NotFound(result.Error),
-                ServiceErrorType.Conflict => Conflict(result.Error),
-                _ => CreatedAtAction(nameof(GetAppointments), new { businessId = dto.BusinessId }, result.Data)
-            };
+            dto.BusinessId = _tenant.BusinessId;
+            return Map(await _appointments.CreateAppointmentAsync(dto));
         }
 
-        [HttpPut("{id:guid}")]
-        [Authorize]
-        public async Task<IActionResult> UpdateAppointment(Guid id, [FromBody] AppointmentCreateDto dto)
+        // POST /api/appointments/{id}/reschedule — otra hora y/o ceder a otro colaborador
+        [HttpPost("{id:guid}/reschedule")]
+        public async Task<ActionResult<AppointmentDto>> Reschedule(Guid id, [FromBody] AppointmentRescheduleDto dto)
         {
-            if (dto == null)
-                return BadRequest("Los datos de la cita son requeridos.");
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
 
-            var result = await _appointmentService.UpdateAppointmentAsync(id, dto);
+            var gestiona = await GestionaEquipo();
+            if (actual.UserId != _tenant.UserId && !gestiona) return Forbid();
+            // Ceder a otra persona: la propia colaboradora puede ceder sus turnos a una compañera
+            if (dto.UserId.HasValue && !await _tenant.UserInBusinessAsync(dto.UserId.Value)) return NotFound("Colaborador no encontrado.");
 
-            return result.ErrorType switch
-            {
-                ServiceErrorType.BadRequest => BadRequest(result.Error),
-                ServiceErrorType.NotFound => NotFound(result.Error),
-                ServiceErrorType.Conflict => Conflict(result.Error),
-                _ => Ok(result.Data)
-            };
+            return Map(await _appointments.RescheduleAsync(_tenant.BusinessId, id, _tenant.UserId, dto));
         }
 
+        // POST /api/appointments/{id}/status { status, note }
+        [HttpPost("{id:guid}/status")]
+        public async Task<ActionResult<AppointmentDto>> ChangeStatus(Guid id, [FromBody] AppointmentStatusDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
+            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+
+            return Map(await _appointments.ChangeStatusAsync(_tenant.BusinessId, id, _tenant.UserId, dto));
+        }
+
+        // Cancelar (antes era un borrado físico): DELETE /api/appointments/{id}?reason=
         [HttpDelete("{id:guid}")]
-        [Authorize]
-        public async Task<IActionResult> DeleteAppointment(Guid id)
-        {
-            var result = await _appointmentService.DeleteAppointmentAsync(id);
+        public Task<ActionResult<AppointmentDto>> Cancel(Guid id, [FromQuery] string? reason) =>
+            ChangeStatus(id, new AppointmentStatusDto { Status = AppointmentStatus.Cancelled, Note = reason ?? "Cancelado desde el panel." });
 
-            return result.ErrorType switch
-            {
-                ServiceErrorType.NotFound => NotFound(result.Error),
-                _ => NoContent()
-            };
-        }
-
-        // Puede aprobar/rechazar: el colaborador dueño de la cita, o quien tenga flexibility.approve
-        // (Owner incluido por el bypass de rol).
+        // Aprobar / rechazar turnos fuera de horario: el colaborador del turno o quien tenga flexibility.approve
         [HttpPost("{id:guid}/approve")]
-        [Authorize]
-        public async Task<IActionResult> ApproveOutOfHours(Guid id)
+        public async Task<ActionResult<AppointmentDto>> ApproveOutOfHours(Guid id)
         {
-            var (callerId, canActOnBehalf) = await ResolveCallerAsync();
-            if (callerId == null)
-                return Unauthorized("Token inválido: no contiene el identificador del usuario.");
-
-            var result = await _appointmentService.ApproveOutOfHoursAsync(id, callerId.Value, canActOnBehalf);
-
-            return result.ErrorType switch
-            {
-                ServiceErrorType.NotFound => NotFound(result.Error),
-                ServiceErrorType.BadRequest => BadRequest(result.Error),
-                ServiceErrorType.Unauthorized => Forbid(),
-                _ => Ok(result.Data)
-            };
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
+            var puede = await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove);
+            return Map(await _appointments.ApproveOutOfHoursAsync(id, _tenant.UserId, puede));
         }
 
         [HttpPost("{id:guid}/reject")]
-        [Authorize]
-        public async Task<IActionResult> RejectOutOfHours(Guid id)
+        public async Task<ActionResult<AppointmentDto>> RejectOutOfHours(Guid id)
         {
-            var (callerId, canActOnBehalf) = await ResolveCallerAsync();
-            if (callerId == null)
-                return Unauthorized("Token inválido: no contiene el identificador del usuario.");
-
-            var result = await _appointmentService.RejectOutOfHoursAsync(id, callerId.Value, canActOnBehalf);
-
-            return result.ErrorType switch
-            {
-                ServiceErrorType.NotFound => NotFound(result.Error),
-                ServiceErrorType.BadRequest => BadRequest(result.Error),
-                ServiceErrorType.Unauthorized => Forbid(),
-                _ => Ok(result.Data)
-            };
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
+            var puede = await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove);
+            return Map(await _appointments.RejectOutOfHoursAsync(id, _tenant.UserId, puede));
         }
 
-        // Resuelve el UserId del caller y si puede actuar en nombre de otro colaborador
-        // (Owner por bypass de rol, o Encargado con flexibility.approve otorgado).
-        private async Task<(Guid? CallerId, bool CanActOnBehalf)> ResolveCallerAsync()
+        private ActionResult<AppointmentDto> Map(ServiceResult<AppointmentDto> r) => r.ErrorType switch
         {
-            var callerIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
-            if (!Guid.TryParse(callerIdClaim, out var callerId))
-                return (null, false);
-
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            if (role == Roles.Owner)
-                return (callerId, true);
-
-            var grantedCodes = await _permissionService.GetGrantedCodesAsync(callerId);
-            return (callerId, grantedCodes.Contains(PermissionCodes.FlexibilityApprove));
-        }
+            ServiceErrorType.NotFound => NotFound(r.Error),
+            ServiceErrorType.BadRequest => BadRequest(r.Error),
+            ServiceErrorType.Conflict => Conflict(r.Error),
+            ServiceErrorType.Unauthorized => Forbid(),
+            _ => Ok(r.Data)
+        };
     }
 }

@@ -18,6 +18,14 @@ namespace AgendaApp.Dtos
         public string? TimeOff { get; set; }
     }
 
+    public class StaffAvailabilityDto
+    {
+        public Guid UserId { get; set; }
+        public string Name { get; set; } = null!;
+        public List<DateTime> Starts { get; set; } = new();
+        public string? TimeOff { get; set; }
+    }
+
     public class AvailabilityResponseDto
     {
         public Guid UserId { get; set; }

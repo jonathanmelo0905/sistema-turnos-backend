@@ -24,6 +24,7 @@ namespace AgendaApp.Context
         public DbSet<UserPermission> UserPermissions { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<TimeOffRequest> TimeOffRequests { get; set; }
+        public DbSet<AppointmentHistory> AppointmentHistory { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -112,6 +113,19 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Category>().Property(c => c.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Category>().Property(c => c.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Service>().Property(s => s.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+
+            modelBuilder.Entity<AppointmentHistory>().Property(h => h.HistoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<AppointmentHistory>().Property(h => h.AppointmentId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<AppointmentHistory>().Property(h => h.ByUserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<Appointment>().Property(a => a.CreatedByUserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<AppointmentHistory>()
+                .HasOne(h => h.Appointment)
+                .WithMany(a => a.History)
+                .HasForeignKey(h => h.AppointmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Appointment>()
+                .HasIndex(a => new { a.BusinessId, a.DateTimeStart })
+                .HasDatabaseName("IX_Appointments_Business_Start");
 
             modelBuilder.Entity<TimeOffRequest>().Property(t => t.TimeOffId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<TimeOffRequest>().Property(t => t.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");

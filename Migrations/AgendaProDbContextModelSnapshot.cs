@@ -31,18 +31,46 @@ namespace AgendaApp.Migrations
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
                     b.Property<Guid>("ClientId")
                         .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime(6)")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid?>("CreatedByUserId"), "utf8mb4");
+
                     b.Property<DateTime>("DateTimeEnd")
                         .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("DateTimeStart")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<decimal?>("Price")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("StartedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Status")
@@ -52,6 +80,9 @@ namespace AgendaApp.Migrations
                         .HasColumnType("varchar(50)")
                         .HasDefaultValue("Pending");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("char(36)");
 
@@ -60,9 +91,10 @@ namespace AgendaApp.Migrations
 
                     b.HasKey("AppointmentId");
 
-                    b.HasIndex("BusinessId");
-
                     b.HasIndex("serviceId");
+
+                    b.HasIndex("BusinessId", "DateTimeStart")
+                        .HasDatabaseName("IX_Appointments_Business_Start");
 
                     b.HasIndex("ClientId", "DateTimeStart")
                         .HasDatabaseName("IX_Appointments_ClientId_DateTimeStart");
@@ -71,6 +103,54 @@ namespace AgendaApp.Migrations
                         .HasDatabaseName("IX_Appointments_UserId_DateTimeStart");
 
                     b.ToTable("Appointments");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.AppointmentHistory", b =>
+                {
+                    b.Property<Guid>("HistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("HistoryId"), "utf8mb4");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("AppointmentId"), "utf8mb4");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ByUserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid?>("ByUserId"), "utf8mb4");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("ToStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.HasKey("HistoryId");
+
+                    b.HasIndex("AppointmentId");
+
+                    b.ToTable("AppointmentHistory");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.Business", b =>
@@ -651,6 +731,17 @@ namespace AgendaApp.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AgendaApp.Context.AppointmentHistory", b =>
+                {
+                    b.HasOne("AgendaApp.Context.Appointment", "Appointment")
+                        .WithMany("History")
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+                });
+
             modelBuilder.Entity("AgendaApp.Context.Business", b =>
                 {
                     b.HasOne("AgendaApp.Context.Plan", null)
@@ -810,6 +901,11 @@ namespace AgendaApp.Migrations
                     b.Navigation("Service");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.Appointment", b =>
+                {
+                    b.Navigation("History");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.Business", b =>
