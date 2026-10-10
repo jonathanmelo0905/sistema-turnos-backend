@@ -27,7 +27,6 @@ builder.Services.AddCors(options =>
 // Registrar DbContext
 builder.Services.AddDbContext<AgendaProDbContext>(options =>
 {
-    //options.UseSqlServer(builder.Configuration.GetConnectionString("StoreConnetion"));
     options.UseMySql(builder.Configuration.GetConnectionString("TurnosConnection"),
     new MySqlServerVersion(new Version(8, 0, 2)));
 });
