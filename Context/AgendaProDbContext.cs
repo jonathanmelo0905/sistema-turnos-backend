@@ -22,6 +22,7 @@ namespace AgendaApp.Context
         public DbSet<UserScheduleException> UserScheduleExceptions { get; set; }
         public DbSet<Permission> Permissions { get; set; }
         public DbSet<UserPermission> UserPermissions { get; set; }
+        public DbSet<Category> Categories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -98,6 +99,24 @@ namespace AgendaApp.Context
                 .HasMany(b => b.BusinessSchedules)
                 .WithOne(bs => bs.Business)
                 .HasForeignKey(bs => bs.BusinessId);
+
+            // 🔹 Category: al desaparecer una categoría, sus servicios quedan sin categoría
+            modelBuilder.Entity<Category>()
+                .HasOne(c => c.Business)
+                .WithMany()
+                .HasForeignKey(c => c.BusinessId);
+
+            // Las tablas originales (scripts SQL) guardan los Guid como char(36) utf8mb4;
+            // las columnas nuevas deben coincidir para que las FK sean compatibles.
+            modelBuilder.Entity<Category>().Property(c => c.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<Category>().Property(c => c.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<Service>().Property(s => s.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+
+            modelBuilder.Entity<Service>()
+                .HasOne(s => s.Category)
+                .WithMany(c => c.Services)
+                .HasForeignKey(s => s.CategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             // 🔒 Índices para que el SELECT ... FOR UPDATE de no-solapamiento (CU-04) bloquee
             // solo el rango de fechas relevante por colaborador/cliente, no toda su historia.

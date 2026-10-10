@@ -1,7 +1,8 @@
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+using AgendaApp.Authorization;
 using AgendaApp.Dtos;
 using AgendaApp.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace AgendaApp.Controllers
 {
@@ -10,18 +11,23 @@ namespace AgendaApp.Controllers
     public class ServicesController : ControllerBase
     {
         private readonly IServiceService _serviceService;
+        private readonly ITenantGuard _tenant;
 
-        public ServicesController(IServiceService serviceService)
+        public ServicesController(IServiceService serviceService, ITenantGuard tenant)
         {
             _serviceService = serviceService;
+            _tenant = tenant;
         }
 
-        // Público: catálogo de servicios visible para clientes finales sin login
+        // Público: catálogo visible para clientes finales sin login (solo activos).
+        // El personal del propio negocio ve también los inactivos.
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetServices([FromQuery] Guid businessId)
         {
             var services = await _serviceService.GetServicesAsync(businessId);
+            if (!_tenant.IsOwnBusiness(businessId))
+                services = services.Where(s => s.Active).ToList();
             return Ok(services);
         }
 
@@ -32,6 +38,10 @@ namespace AgendaApp.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            dto.BusinessId = _tenant.BusinessId;
+            if (dto.CategoryId != null && !await _tenant.CategoryInBusinessAsync(dto.CategoryId.Value))
+                return BadRequest("La categoría no pertenece a tu empresa.");
+
             var result = await _serviceService.CreateServiceAsync(dto);
 
             return result.ErrorType switch
@@ -41,10 +51,19 @@ namespace AgendaApp.Controllers
             };
         }
 
-        [HttpPut("{id}")]
+        [HttpPut("{id:guid}")]
         [Authorize(Policy = "services.manage")]
         public async Task<IActionResult> UpdateService(Guid id, [FromBody] ServiceUpdateDto dto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (!await _tenant.ServiceInBusinessAsync(id))
+                return NotFound("Servicio no encontrado.");
+
+            if (dto.CategoryId != null && !await _tenant.CategoryInBusinessAsync(dto.CategoryId.Value))
+                return BadRequest("La categoría no pertenece a tu empresa.");
+
             var result = await _serviceService.UpdateServiceAsync(id, dto);
 
             return result.ErrorType switch
@@ -54,16 +73,19 @@ namespace AgendaApp.Controllers
             };
         }
 
-        [HttpDelete("{id}")]
+        [HttpDelete("{id:guid}")]
         [Authorize(Policy = "services.manage")]
         public async Task<IActionResult> DeactivateService(Guid id)
         {
+            if (!await _tenant.ServiceInBusinessAsync(id))
+                return NotFound("Servicio no encontrado.");
+
             var result = await _serviceService.DeactivateServiceAsync(id);
 
             return result.ErrorType switch
             {
                 ServiceErrorType.NotFound => NotFound(result.Error),
-                _ => Ok("Servicio desactivado correctamente.")
+                _ => Ok(new { message = "Servicio desactivado correctamente." })
             };
         }
     }

@@ -23,6 +23,12 @@ namespace AgendaApp.Context
         [Required, MaxLength(50)]
         public string Role { get; set; } = Roles.Owner;
 
+        [MaxLength(30)]
+        public string? Phone { get; set; }
+
+        // Borrado lógico: un usuario inactivo no puede iniciar sesión ni recibir turnos.
+        public bool Active { get; set; } = true;
+
         [Required]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

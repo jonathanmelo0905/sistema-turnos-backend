@@ -17,6 +17,7 @@ namespace AgendaApp.Dtos
         [Required]
         public decimal Price { get; set; }
 
-        public bool Active { get; set; } = true; // Campo que indica si está activo o no
+        public bool Active { get; set; } = true;
+        public Guid? CategoryId { get; set; }
     }
 }

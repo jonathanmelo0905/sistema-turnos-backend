@@ -74,6 +74,12 @@ namespace AgendaApp.Services
                 return ServiceResult<AuthResponseDto>.Unauthorized("Email o contraseña incorrectos");
             }
 
+            if (!user.Active)
+            {
+                _logger.LogWarning("Intento de login de usuario inactivo {UserId}.", user.UserId);
+                return ServiceResult<AuthResponseDto>.Unauthorized("Tu usuario está inactivo. Habla con el administrador de tu empresa.");
+            }
+
             var token = GenerateJwtToken(user);
             var refreshToken = await CreateRefreshTokenAsync(user);
 
@@ -98,7 +104,7 @@ namespace AgendaApp.Services
                 .Include(r => r.User)
                 .FirstOrDefaultAsync(r => r.Token == refreshToken && !r.Revoked);
 
-            if (existingToken == null || existingToken.Expiration < DateTime.UtcNow)
+            if (existingToken == null || existingToken.Expiration < DateTime.UtcNow || !existingToken.User.Active)
             {
                 _logger.LogWarning("Intento de refresh con token inválido o expirado.");
                 return ServiceResult<RefreshResultDto>.Unauthorized("Refresh token inválido o expirado.");

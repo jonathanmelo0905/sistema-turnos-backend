@@ -20,6 +20,7 @@ namespace AgendaApp.Services
         {
             return await _context.Services
                 .Where(s => s.BusinessId == businessId)
+                .OrderBy(s => s.Name)
                 .Select(s => new ServiceResponseDto
                 {
                     ServiceId = s.ServiceId,
@@ -28,7 +29,9 @@ namespace AgendaApp.Services
                     Description = s.Description,
                     DurationMin = s.DurationMin,
                     Price = s.Price,
-                    Active = s.Active
+                    Active = s.Active,
+                    CategoryId = s.CategoryId,
+                    CategoryName = s.Category != null ? s.Category.Name : null
                 })
                 .ToListAsync();
         }
@@ -43,10 +46,11 @@ namespace AgendaApp.Services
             {
                 ServiceId = Guid.NewGuid(),
                 BusinessId = dto.BusinessId,
-                Name = dto.Name,
+                Name = dto.Name.Trim(),
                 Description = dto.Description,
                 DurationMin = dto.DurationMin,
                 Price = dto.Price,
+                CategoryId = dto.CategoryId,
                 Active = true
             };
 
@@ -55,16 +59,7 @@ namespace AgendaApp.Services
 
             _logger.LogInformation("Servicio {ServiceId} creado para negocio {BusinessId}.", service.ServiceId, service.BusinessId);
 
-            return ServiceResult<ServiceResponseDto>.Ok(new ServiceResponseDto
-            {
-                ServiceId = service.ServiceId,
-                BusinessId = service.BusinessId,
-                Name = service.Name,
-                Description = service.Description,
-                DurationMin = service.DurationMin,
-                Price = service.Price,
-                Active = service.Active
-            });
+            return ServiceResult<ServiceResponseDto>.Ok(await ToDtoAsync(service));
         }
 
         public async Task<ServiceResult<ServiceResponseDto>> UpdateServiceAsync(Guid id, ServiceUpdateDto dto)
@@ -73,26 +68,18 @@ namespace AgendaApp.Services
             if (service == null)
                 return ServiceResult<ServiceResponseDto>.NotFound("Servicio no encontrado.");
 
-            service.Name = dto.Name;
+            service.Name = dto.Name.Trim();
             service.Description = dto.Description;
             service.DurationMin = dto.DurationMin;
             service.Price = dto.Price;
             service.Active = dto.Active;
+            service.CategoryId = dto.CategoryId;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Servicio {ServiceId} actualizado.", id);
 
-            return ServiceResult<ServiceResponseDto>.Ok(new ServiceResponseDto
-            {
-                ServiceId = service.ServiceId,
-                BusinessId = service.BusinessId,
-                Name = service.Name,
-                Description = service.Description,
-                DurationMin = service.DurationMin,
-                Price = service.Price,
-                Active = service.Active
-            });
+            return ServiceResult<ServiceResponseDto>.Ok(await ToDtoAsync(service));
         }
 
         public async Task<ServiceResult<bool>> DeactivateServiceAsync(Guid id)
@@ -106,6 +93,29 @@ namespace AgendaApp.Services
 
             _logger.LogInformation("Servicio {ServiceId} desactivado.", id);
             return ServiceResult.Ok();
+        }
+
+        private async Task<ServiceResponseDto> ToDtoAsync(ServiceEntity service)
+        {
+            var categoryName = service.CategoryId == null
+                ? null
+                : await _context.Categories
+                    .Where(c => c.CategoryId == service.CategoryId)
+                    .Select(c => c.Name)
+                    .FirstOrDefaultAsync();
+
+            return new ServiceResponseDto
+            {
+                ServiceId = service.ServiceId,
+                BusinessId = service.BusinessId,
+                Name = service.Name,
+                Description = service.Description,
+                DurationMin = service.DurationMin,
+                Price = service.Price,
+                Active = service.Active,
+                CategoryId = service.CategoryId,
+                CategoryName = categoryName
+            };
         }
     }
 }

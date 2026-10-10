@@ -9,5 +9,7 @@
         public int DurationMin { get; set; }
         public decimal Price { get; set; }
         public bool Active { get; set; }
+        public Guid? CategoryId { get; set; }
+        public string? CategoryName { get; set; }
     }
 }

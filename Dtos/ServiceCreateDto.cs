@@ -19,5 +19,6 @@ namespace AgendaApp.Dtos
 
         [Required]
         public decimal Price { get; set; } // Precio del servicio
+        public Guid? CategoryId { get; set; }
     }
 }

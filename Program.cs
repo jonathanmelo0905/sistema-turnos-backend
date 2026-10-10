@@ -44,6 +44,10 @@ builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<ISchedulesService, SchedulesService>();
 builder.Services.AddScoped<IUserServicesService, UserServicesService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantGuard, TenantGuard>();
 
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IPermissionCache, PermissionCache>();

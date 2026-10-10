@@ -12,6 +12,9 @@ namespace AgendaApp.Context
         public int DurationMin { get; set; }
         public decimal Price { get; set; }
         public bool Active { get; set; } = true;
+        public Guid? CategoryId { get; set; }
+
+        public Category? Category { get; set; }
 
         // 🔗 Relaciones
         public Business Business { get; set; } = null!;

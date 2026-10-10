@@ -89,10 +89,22 @@ namespace AgendaApp.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("varchar(150)");
+
+                    b.Property<string>("Facebook")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Instagram")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -105,6 +117,14 @@ namespace AgendaApp.Migrations
 
                     b.Property<int>("PlanId")
                         .HasColumnType("int");
+
+                    b.Property<string>("TikTok")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("WhatsApp")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
 
                     b.HasKey("BusinessId");
 
@@ -139,6 +159,40 @@ namespace AgendaApp.Migrations
                     b.HasIndex("BusinessId");
 
                     b.ToTable("BusinessSchedules");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.Category", b =>
+                {
+                    b.Property<Guid>("CategoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("CategoryId"), "utf8mb4");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("BusinessId"), "utf8mb4");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.HasKey("CategoryId");
+
+                    b.HasIndex("BusinessId");
+
+                    b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.Client", b =>
@@ -305,6 +359,12 @@ namespace AgendaApp.Migrations
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid?>("CategoryId"), "utf8mb4");
+
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
@@ -322,6 +382,8 @@ namespace AgendaApp.Migrations
 
                     b.HasIndex("BusinessId");
 
+                    b.HasIndex("CategoryId");
+
                     b.ToTable("Services");
                 });
 
@@ -330,6 +392,9 @@ namespace AgendaApp.Migrations
                     b.Property<Guid>("UserId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("char(36)");
@@ -351,6 +416,10 @@ namespace AgendaApp.Migrations
                         .IsRequired()
                         .HasMaxLength(250)
                         .HasColumnType("varchar(250)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -522,6 +591,17 @@ namespace AgendaApp.Migrations
                     b.Navigation("Business");
                 });
 
+            modelBuilder.Entity("AgendaApp.Context.Category", b =>
+                {
+                    b.HasOne("AgendaApp.Context.Business", "Business")
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Business");
+                });
+
             modelBuilder.Entity("AgendaApp.Context.Client", b =>
                 {
                     b.HasOne("AgendaApp.Context.Business", "Business")
@@ -552,7 +632,14 @@ namespace AgendaApp.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("AgendaApp.Context.Category", "Category")
+                        .WithMany("Services")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Business");
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.User", b =>
@@ -643,6 +730,11 @@ namespace AgendaApp.Migrations
                     b.Navigation("Clients");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.Category", b =>
+                {
+                    b.Navigation("Services");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.Client", b =>

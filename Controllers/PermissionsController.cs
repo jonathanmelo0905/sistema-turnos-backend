@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AgendaApp.Authorization;
 using AgendaApp.Context;
 using AgendaApp.Dtos;
 using AgendaApp.Services;
@@ -12,10 +13,12 @@ namespace AgendaApp.Controllers
     public class PermissionsController : ControllerBase
     {
         private readonly IPermissionService _permissionService;
+        private readonly ITenantGuard _tenant;
 
-        public PermissionsController(IPermissionService permissionService)
+        public PermissionsController(IPermissionService permissionService, ITenantGuard tenant)
         {
             _permissionService = permissionService;
+            _tenant = tenant;
         }
 
         // GET /api/permissions — catálogo estático, cualquier usuario autenticado
@@ -31,6 +34,9 @@ namespace AgendaApp.Controllers
         [HttpGet("/api/users/{userId:guid}/permissions")]
         public async Task<IActionResult> GetUserPermissions(Guid userId)
         {
+            if (!await _tenant.UserInBusinessAsync(userId))
+                return NotFound("Usuario no encontrado.");
+
             var result = await _permissionService.GetUserPermissionsAsync(userId);
 
             if (result.ErrorType == ServiceErrorType.NotFound)
@@ -55,6 +61,9 @@ namespace AgendaApp.Controllers
         [Authorize(Roles = "Owner")]
         public async Task<IActionResult> GrantPermission(Guid userId, string permissionCode)
         {
+            if (!await _tenant.UserInBusinessAsync(userId))
+                return NotFound("Usuario no encontrado.");
+
             var callerIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
             if (!Guid.TryParse(callerIdClaim, out var callerId))
                 return Unauthorized("Token inválido: no contiene el identificador del usuario.");
@@ -73,6 +82,9 @@ namespace AgendaApp.Controllers
         [Authorize(Roles = "Owner")]
         public async Task<IActionResult> RevokePermission(Guid userId, string permissionCode)
         {
+            if (!await _tenant.UserInBusinessAsync(userId))
+                return NotFound("Usuario no encontrado.");
+
             var result = await _permissionService.RevokeAsync(userId, permissionCode);
 
             return result.ErrorType switch

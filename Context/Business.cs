@@ -19,6 +19,22 @@ namespace AgendaApp.Context
         [MaxLength(250)]
         public string? Address { get; set; }
 
+        [MaxLength(500)]
+        public string? Description { get; set; }
+
+        // Redes y contacto público (se muestran en la página de reservas del cliente)
+        [MaxLength(30)]
+        public string? WhatsApp { get; set; }
+
+        [MaxLength(200)]
+        public string? Instagram { get; set; }
+
+        [MaxLength(200)]
+        public string? Facebook { get; set; }
+
+        [MaxLength(200)]
+        public string? TikTok { get; set; }
+
         [Required]
         public int PlanId { get; set; } = 1;
 
