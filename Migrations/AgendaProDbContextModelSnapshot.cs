@@ -289,7 +289,7 @@ namespace AgendaApp.Migrations
                         {
                             PermissionId = 7,
                             Code = "flexibility.approve",
-                            Description = "Aprobar políticas de flexibilidad (horario, turnos fuera de horario)"
+                            Description = "Aprobar ausencias y turnos fuera de horario"
                         });
                 });
 
@@ -385,6 +385,86 @@ namespace AgendaApp.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("Services");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.TimeOffRequest", b =>
+                {
+                    b.Property<Guid>("TimeOffId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("TimeOffId"), "utf8mb4");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("BusinessId"), "utf8mb4");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("CreatedByUserId"), "utf8mb4");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("EndTime")
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid?>("ReviewedByUserId"), "utf8mb4");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("StartTime")
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("UserId"), "utf8mb4");
+
+                    b.HasKey("TimeOffId");
+
+                    b.HasIndex("BusinessId", "Status")
+                        .HasDatabaseName("IX_TimeOff_Business_Status");
+
+                    b.HasIndex("UserId", "Status", "StartDate")
+                        .HasDatabaseName("IX_TimeOff_User_Status_Start");
+
+                    b.ToTable("TimeOffRequests");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.User", b =>
@@ -640,6 +720,17 @@ namespace AgendaApp.Migrations
                     b.Navigation("Business");
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.TimeOffRequest", b =>
+                {
+                    b.HasOne("AgendaApp.Context.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.User", b =>

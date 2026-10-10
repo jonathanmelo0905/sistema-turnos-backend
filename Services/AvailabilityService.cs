@@ -7,6 +7,7 @@ namespace AgendaApp.Services
     public class AvailabilityService
     {
         private const int MaxRangeDays = 31;
+        public const int SlotStepMin = 15;
 
         private readonly AgendaProDbContext _context;
         private readonly ILogger<AvailabilityService> _logger;
@@ -27,8 +28,11 @@ namespace AgendaApp.Services
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ServiceId == serviceId);
 
-            if (service == null)
-                return new ResultadoService { Status = false, Mensaje = "El servicio no existe, no puede continuar", Reason = AvailabilityReason.ServiceNotFound };
+            if (service == null || !service.Active)
+                return new ResultadoService { Status = false, Mensaje = "El servicio no existe o está desactivado.", Reason = AvailabilityReason.ServiceNotFound };
+
+            if (start < DateTime.Now)
+                return new ResultadoService { Status = false, Mensaje = "Ese horario ya pasó.", Reason = AvailabilityReason.InPast };
 
             // 🧩 0️⃣.2 Validar que el usuario ofrezca este servicio
             var userProvidesService = await _context.UserServices
@@ -38,8 +42,12 @@ namespace AgendaApp.Services
                 return new ResultadoService { Status = false, Mensaje = "el colaborador no presta este servicio, no puede agendarse", Reason = AvailabilityReason.ServiceNotProvided };
 
             var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
-            if (user == null)
-                return new ResultadoService { Status = false, Mensaje = "El colaborador no existe", Reason = AvailabilityReason.UserNotFound };
+            if (user == null || !user.Active)
+                return new ResultadoService { Status = false, Mensaje = "El colaborador no existe o está inactivo.", Reason = AvailabilityReason.UserNotFound };
+
+            // Una ausencia aprobada nunca se salta, ni siquiera por la vía de flexibilidad
+            if (await TimeOffCoversAsync(userId, start, end))
+                return new ResultadoService { Status = false, Mensaje = "El colaborador tiene una ausencia aprobada en ese horario.", Reason = AvailabilityReason.TimeOff };
 
             // 🧩 1️⃣-3️⃣ Intersección empresa ∩ colaborador, menos almuerzo y excepciones (lógica compartida con GetAvailableSlotsAsync)
             var dayIntervals = await GetDayIntervalsAsync(userId, user.BusinessId, start.Date);
@@ -91,16 +99,16 @@ namespace AgendaApp.Services
                 return ServiceResult<AvailabilityResponseDto>.BadRequest($"El rango de fechas no puede superar los {MaxRangeDays} días.");
 
             var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
-            if (user == null)
-                return ServiceResult<AvailabilityResponseDto>.NotFound("El colaborador no existe.");
+            if (user == null || !user.Active)
+                return ServiceResult<AvailabilityResponseDto>.NotFound("El colaborador no existe o está inactivo.");
 
             int? durationMin = null;
 
             if (serviceId.HasValue)
             {
                 var service = await _context.Services.AsNoTracking().FirstOrDefaultAsync(s => s.ServiceId == serviceId.Value);
-                if (service == null)
-                    return ServiceResult<AvailabilityResponseDto>.NotFound("El servicio especificado no existe.");
+                if (service == null || !service.Active)
+                    return ServiceResult<AvailabilityResponseDto>.NotFound("El servicio no existe o está desactivado.");
 
                 var userProvidesService = await _context.UserServices
                     .AnyAsync(us => us.UserId == userId && us.ServiceId == serviceId.Value);
@@ -125,25 +133,41 @@ namespace AgendaApp.Services
                 // Restar citas existentes de ese día
                 var appointments = await _context.Appointments
                     .Where(a => a.UserId == userId
-                        && a.Status != "Cancelled"
-                        && a.Status != "RejectedOutOfHours"
-                        && a.DateTimeStart.Date == date)
+                        && !AppointmentFreeStatus.All.Contains(a.Status)
+                        && a.DateTimeStart < date.AddDays(1) && a.DateTimeEnd > date)
                     .ToListAsync();
 
                 foreach (var appt in appointments)
                     dayIntervals = SubtractInterval(dayIntervals, appt.DateTimeStart.TimeOfDay, appt.DateTimeEnd.TimeOfDay);
 
+                // Lo que ya pasó hoy no se ofrece
+                if (date == DateTime.Today)
+                    dayIntervals = SubtractInterval(dayIntervals, TimeSpan.Zero, RoundUp(DateTime.Now.TimeOfDay));
+                else if (date < DateTime.Today)
+                    dayIntervals.Clear();
+
                 // Filtrar por duración del servicio (si aplica)
                 if (durationMin.HasValue)
                     dayIntervals = dayIntervals.Where(i => (i.End - i.Start).TotalMinutes >= durationMin.Value).ToList();
 
-                response.Days.Add(new AvailabilityDayDto
+                var day = new AvailabilityDayDto
                 {
                     Date = date,
                     Slots = dayIntervals
                         .Select(i => new AvailabilitySlotDto { Start = date + i.Start, End = date + i.End })
-                        .ToList()
-                });
+                        .ToList(),
+                    TimeOff = await TimeOffLabelAsync(userId, date)
+                };
+
+                if (durationMin.HasValue)
+                {
+                    var dur = TimeSpan.FromMinutes(durationMin.Value);
+                    foreach (var (ini, fin) in dayIntervals)
+                        for (var t = RoundUp(ini); t + dur <= fin; t += TimeSpan.FromMinutes(SlotStepMin))
+                            day.Starts.Add(date + t);
+                }
+
+                response.Days.Add(day);
             }
 
             return ServiceResult<AvailabilityResponseDto>.Ok(response);
@@ -233,7 +257,50 @@ namespace AgendaApp.Services
                 }
             }
 
+            // Ausencias aprobadas: día completo, nada; por horas, se resta
+            var timeOffs = await _context.TimeOffRequests.AsNoTracking()
+                .Where(t => t.UserId == userId && t.Status == TimeOffStatus.Approved && t.StartDate <= date && t.EndDate >= date)
+                .ToListAsync();
+
+            foreach (var t in timeOffs)
+            {
+                if (!t.IsPartial) return new List<(TimeSpan, TimeSpan)>();
+                if (TimeSpan.TryParse(t.StartTime, out var tIni) && TimeSpan.TryParse(t.EndTime, out var tFin))
+                    intervals = SubtractInterval(intervals, tIni, tFin);
+            }
+
             return MergeIntervals(intervals);
+        }
+
+        private async Task<bool> TimeOffCoversAsync(Guid userId, DateTime start, DateTime end)
+        {
+            var day = start.Date;
+            var timeOffs = await _context.TimeOffRequests.AsNoTracking()
+                .Where(t => t.UserId == userId && t.Status == TimeOffStatus.Approved && t.StartDate <= end.Date && t.EndDate >= day)
+                .ToListAsync();
+
+            return timeOffs.Any(t =>
+            {
+                if (!t.IsPartial) return true;
+                if (!TimeSpan.TryParse(t.StartTime, out var a) || !TimeSpan.TryParse(t.EndTime, out var b)) return true;
+                return start < t.StartDate + b && end > t.StartDate + a;
+            });
+        }
+
+        private async Task<string?> TimeOffLabelAsync(Guid userId, DateTime date)
+        {
+            var t = await _context.TimeOffRequests.AsNoTracking()
+                .Where(x => x.UserId == userId && x.Status == TimeOffStatus.Approved && x.StartDate <= date && x.EndDate >= date)
+                .FirstOrDefaultAsync();
+            if (t == null) return null;
+            return t.IsPartial ? $"{t.Type} {t.StartTime}-{t.EndTime}" : t.Type;
+        }
+
+        // Redondea hacia arriba al siguiente múltiplo de SlotStepMin (10:07 pasa a 10:15)
+        private static TimeSpan RoundUp(TimeSpan t)
+        {
+            var min = (int)Math.Ceiling(t.TotalMinutes / SlotStepMin) * SlotStepMin;
+            return TimeSpan.FromMinutes(min);
         }
 
         private static List<(TimeSpan Start, TimeSpan End)> SubtractInterval(

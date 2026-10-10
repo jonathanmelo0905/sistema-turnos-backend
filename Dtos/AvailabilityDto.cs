@@ -10,6 +10,12 @@ namespace AgendaApp.Dtos
     {
         public DateTime Date { get; set; }
         public List<AvailabilitySlotDto> Slots { get; set; } = new();
+
+        // Horas de inicio reservables (cada SlotStepMin) cuando se consulta con un servicio
+        public List<DateTime> Starts { get; set; } = new();
+
+        // Ausencia aprobada que afecta el día (para mostrarla en la agenda)
+        public string? TimeOff { get; set; }
     }
 
     public class AvailabilityResponseDto

@@ -18,7 +18,7 @@ namespace AgendaApp.Context
             [AccountingView] = "Ver contabilidad",
             [StatsView] = "Ver estadísticas de flujo de clientes",
             [ClientsContactsView] = "Ver contactos de clientes",
-            [FlexibilityApprove] = "Aprobar políticas de flexibilidad (horario, turnos fuera de horario)"
+            [FlexibilityApprove] = "Aprobar ausencias y turnos fuera de horario"
         };
     }
 }

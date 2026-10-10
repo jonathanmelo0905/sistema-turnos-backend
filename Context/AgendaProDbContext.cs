@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgendaApp.Context
 {
@@ -23,6 +23,7 @@ namespace AgendaApp.Context
         public DbSet<Permission> Permissions { get; set; }
         public DbSet<UserPermission> UserPermissions { get; set; }
         public DbSet<Category> Categories { get; set; }
+        public DbSet<TimeOffRequest> TimeOffRequests { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -111,6 +112,22 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Category>().Property(c => c.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Category>().Property(c => c.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Service>().Property(s => s.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+
+            modelBuilder.Entity<TimeOffRequest>().Property(t => t.TimeOffId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<TimeOffRequest>().Property(t => t.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<TimeOffRequest>().Property(t => t.UserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<TimeOffRequest>().Property(t => t.CreatedByUserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<TimeOffRequest>().Property(t => t.ReviewedByUserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<TimeOffRequest>()
+                .HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId);
+            modelBuilder.Entity<TimeOffRequest>()
+                .HasIndex(t => new { t.UserId, t.Status, t.StartDate })
+                .HasDatabaseName("IX_TimeOff_User_Status_Start");
+            modelBuilder.Entity<TimeOffRequest>()
+                .HasIndex(t => new { t.BusinessId, t.Status })
+                .HasDatabaseName("IX_TimeOff_Business_Status");
 
             modelBuilder.Entity<Service>()
                 .HasOne(s => s.Category)
