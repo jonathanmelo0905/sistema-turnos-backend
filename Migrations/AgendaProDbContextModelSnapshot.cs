@@ -41,6 +41,13 @@ namespace AgendaApp.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("ContactReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime?>("ContactedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime(6)")
@@ -57,6 +64,9 @@ namespace AgendaApp.Migrations
 
                     b.Property<DateTime>("DateTimeStart")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("NeedsContact")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(300)
@@ -488,6 +498,65 @@ namespace AgendaApp.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("Services");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.StaffNotification", b =>
+                {
+                    b.Property<Guid>("NotificationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("NotificationId"), "utf8mb4");
+
+                    b.Property<Guid?>("AppointmentId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid?>("AppointmentId"), "utf8mb4");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("BusinessId"), "utf8mb4");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("UserId"), "utf8mb4");
+
+                    b.HasKey("NotificationId");
+
+                    b.HasIndex("UserId", "ReadAt", "CreatedAt")
+                        .HasDatabaseName("IX_StaffNotifications_User");
+
+                    b.ToTable("StaffNotifications");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.TimeOffRequest", b =>

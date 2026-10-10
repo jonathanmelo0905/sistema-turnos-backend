@@ -20,11 +20,15 @@ namespace AgendaApp.Services
 
         private readonly AgendaProDbContext _context;
         private readonly ILogger<TimeOffService> _logger;
+        private readonly INotificationService _notify;
+        private readonly IAppointmentService _appointments;
 
-        public TimeOffService(AgendaProDbContext context, ILogger<TimeOffService> logger)
+        public TimeOffService(AgendaProDbContext context, ILogger<TimeOffService> logger, INotificationService notify, IAppointmentService appointments)
         {
             _context = context;
             _logger = logger;
+            _notify = notify;
+            _appointments = appointments;
         }
 
         public async Task<List<TimeOffResponseDto>> ListAsync(Guid businessId, Guid? userId, string? status, DateTime? from, DateTime? to)
@@ -122,6 +126,17 @@ namespace AgendaApp.Services
             }
 
             _context.TimeOffRequests.Add(request);
+
+            var persona = await _context.Users.Where(u => u.UserId == userId).Select(u => u.Name).FirstAsync();
+            var rango = start == end ? $"{start:dddd d 'de' MMMM}" : $"{start:d MMM} al {end:d MMM}";
+            if (conflicts.Count > 0)
+                await _appointments.FlagForTimeOffAsync(conflicts.Select(c => c.AppointmentId),
+                    $"{persona} pidió ausencia ({request.Type}): reprograma, cede o cancela y avísale al cliente.");
+            if (request.Status == TimeOffStatus.Pending)
+                await _notify.NotifyAsync(businessId, await _notify.WithPermissionAsync(businessId, PermissionCodes.FlexibilityApprove),
+                    NotificationTypes.TimeOffRequested, $"{persona} pide {request.Type.ToLower()}",
+                    rango + (conflicts.Count > 0 ? $" · {conflicts.Count} turno(s) por resolver" : ""), "ausencias", null, createdBy);
+
             await _context.SaveChangesAsync();
             _logger.LogInformation("Ausencia {TimeOffId} ({Status}) creada para {UserId} por {By}.", request.TimeOffId, request.Status, userId, createdBy);
 
@@ -147,6 +162,13 @@ namespace AgendaApp.Services
             t.ReviewedByUserId = reviewer;
             t.ReviewedAt = DateTime.UtcNow;
             t.ReviewNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+
+            var rangoR = t.StartDate == t.EndDate ? $"{t.StartDate:dddd d 'de' MMMM}" : $"{t.StartDate:d MMM} al {t.EndDate:d MMM}";
+            if (!approve) await UnflagAsync(t);
+            await _notify.NotifyAsync(t.BusinessId, new[] { t.UserId }, NotificationTypes.TimeOffReviewed,
+                approve ? $"Te aprobaron {t.Type.ToLower()}" : $"Rechazaron tu solicitud de {t.Type.ToLower()}",
+                rangoR + (string.IsNullOrWhiteSpace(t.ReviewNote) ? "" : $" · «{t.ReviewNote}»"), "agenda-laboral?tab=ausencias", null, reviewer);
+
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Ausencia {TimeOffId} {Status} por {Reviewer}.", timeOffId, t.Status, reviewer);
@@ -165,10 +187,22 @@ namespace AgendaApp.Services
             t.Status = TimeOffStatus.Cancelled;
             t.ReviewedByUserId ??= by;
             t.ReviewedAt ??= DateTime.UtcNow;
+            await UnflagAsync(t);
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Ausencia {TimeOffId} cancelada por {By}.", timeOffId, by);
             return ServiceResult<TimeOffResponseDto>.Ok(await DtoAsync(t, 0));
+        }
+
+        // Si la ausencia no sigue adelante, sus turnos ya no necesitan aviso
+        private async Task UnflagAsync(TimeOffRequest t)
+        {
+            var (from, to) = Window(t.StartDate, t.EndDate, t.StartTime, t.EndTime);
+            var lista = await _context.Appointments
+                .Where(a => a.UserId == t.UserId && a.NeedsContact && a.ContactReason != null && a.ContactReason.Contains("pidió ausencia")
+                    && a.DateTimeStart < to && a.DateTimeEnd > from)
+                .ToListAsync();
+            lista.ForEach(a => { a.NeedsContact = false; a.ContactReason = null; });
         }
 
         private static string? Validate(TimeOffCreateDto dto)

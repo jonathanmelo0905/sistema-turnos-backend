@@ -11,12 +11,14 @@ namespace AgendaApp.Services
         private readonly AgendaProDbContext _context;
         private readonly AvailabilityService _availabilityService;
         private readonly ILogger<AppointmentService> _logger;
+        private readonly INotificationService _notify;
 
-        public AppointmentService(AgendaProDbContext context, AvailabilityService availabilityService, ILogger<AppointmentService> logger)
+        public AppointmentService(AgendaProDbContext context, AvailabilityService availabilityService, ILogger<AppointmentService> logger, INotificationService notify)
         {
             _context = context;
             _availabilityService = availabilityService;
             _logger = logger;
+            _notify = notify;
         }
 
         // ---------------------------------------------------------------- Consultas
@@ -130,6 +132,16 @@ namespace AgendaApp.Services
             AddHistory(appointment.AppointmentId, "Created", null, appointment.Status, byUserId,
                 outOfHours ? "Fuera del horario del colaborador: requiere aprobación." : null);
 
+            var clienteNombre = await _context.Clients.Where(c => c.ClientId == clientId).Select(c => c.Name).FirstOrDefaultAsync();
+            var cuando = $"{start:dddd d 'de' MMMM, h:mm tt}";
+            var enlace = $"turnos?fecha={start:yyyy-MM-dd}";
+            if (source == "Web")
+                await _notify.NotifyAsync(businessId, (await _notify.OwnersAsync(businessId)).Append(dto.UserId),
+                    NotificationTypes.WebBooking, $"Nueva reserva en línea: {clienteNombre}", $"{service.Name} · {cuando}", enlace, appointment.AppointmentId, byUserId);
+            if (outOfHours)
+                await _notify.NotifyAsync(businessId, (await _notify.WithPermissionAsync(businessId, PermissionCodes.FlexibilityApprove)).Append(dto.UserId),
+                    NotificationTypes.OutOfHours, "Turno fuera de horario por aprobar", $"{clienteNombre} · {service.Name} · {cuando}", enlace, appointment.AppointmentId, byUserId);
+
             await _context.SaveChangesAsync();
             await tx.CommitAsync();
 
@@ -202,6 +214,20 @@ namespace AgendaApp.Services
             var nota = $"Antes: {oldStart:dd/MM/yyyy HH:mm}" + (string.IsNullOrWhiteSpace(dto.Note) ? "" : $" · {dto.Note.Trim()}");
             AddHistory(id, cambio, oldStatus, a.Status, byUserId, nota);
 
+            // El cliente tiene que enterarse del cambio
+            a.NeedsContact = true;
+            a.ContactReason = newUserId != oldUser ? "Ahora lo atiende otra persona: avísale al cliente." : "Cambió la hora: confírmala con el cliente.";
+            a.ContactedAt = null;
+
+            if (newUserId != oldUser)
+            {
+                var info = await _context.Appointments.Where(x => x.AppointmentId == id)
+                    .Select(x => new { Cliente = x.Client.Name, Servicio = x.Service.Name }).FirstAsync();
+                await _notify.NotifyAsync(businessId, new[] { newUserId }, NotificationTypes.Reassigned,
+                    $"Te asignaron un turno: {info.Cliente}", $"{info.Servicio} · {start:dddd d 'de' MMMM, h:mm tt}",
+                    $"turnos?fecha={start:yyyy-MM-dd}", id, byUserId);
+            }
+
             await _context.SaveChangesAsync();
             await tx.CommitAsync();
 
@@ -231,6 +257,29 @@ namespace AgendaApp.Services
             var from = a.Status;
             a.Status = to;
             a.UpdatedAt = DateTime.UtcNow;
+
+            var porCliente = byUserId == Guid.Empty;
+            if (to == AppointmentStatus.Cancelled && !porCliente)
+            {
+                a.NeedsContact = true;
+                a.ContactReason = "Se canceló el turno: avísale al cliente.";
+                a.ContactedAt = null;
+            }
+            else if (to is AppointmentStatus.Confirmed or AppointmentStatus.InProgress or AppointmentStatus.Completed or AppointmentStatus.NoShow
+                     || (to == AppointmentStatus.Cancelled && porCliente))
+            {
+                // Ya hubo contacto (o el cliente mismo canceló): nada pendiente
+                a.NeedsContact = false;
+            }
+
+            if (to == AppointmentStatus.Cancelled && porCliente)
+            {
+                var info = await _context.Appointments.Where(x => x.AppointmentId == id)
+                    .Select(x => new { Cliente = x.Client.Name, Servicio = x.Service.Name }).FirstAsync();
+                await _notify.NotifyAsync(businessId, (await _notify.OwnersAsync(businessId)).Append(a.UserId), NotificationTypes.ClientCancelled,
+                    $"{info.Cliente} canceló su turno", $"{info.Servicio} · {a.DateTimeStart:dddd d 'de' MMMM, h:mm tt}. {dto.Note}",
+                    $"turnos?fecha={a.DateTimeStart:yyyy-MM-dd}", id);
+            }
             if (to == AppointmentStatus.InProgress) a.StartedAt = now;
             if (to == AppointmentStatus.Completed) a.CompletedAt = now;
             if (to == AppointmentStatus.Cancelled) a.CancelReason = dto.Note!.Trim();
@@ -280,6 +329,41 @@ namespace AgendaApp.Services
 
             _logger.LogInformation("Cita {AppointmentId} rechazada (fuera de horario) por {CallerId}.", id, callerId);
             return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(appointment.BusinessId, id))!);
+        }
+
+        // ---------------------------------------------------------------- Avisar al cliente
+
+        public async Task<List<AppointmentDto>> ToContactAsync(Guid businessId, Guid? userId)
+        {
+            var query = _context.Appointments.AsNoTracking()
+                .Where(a => a.BusinessId == businessId && a.NeedsContact && a.DateTimeEnd >= DateTime.Today);
+            if (userId.HasValue) query = query.Where(a => a.UserId == userId.Value);
+            return await query.OrderBy(a => a.DateTimeStart).Select(Projection()).ToListAsync();
+        }
+
+        public async Task<ServiceResult<AppointmentDto>> MarkContactedAsync(Guid businessId, Guid id, Guid byUserId, string? note)
+        {
+            var a = await _context.Appointments.FirstOrDefaultAsync(x => x.AppointmentId == id && x.BusinessId == businessId);
+            if (a == null) return ServiceResult<AppointmentDto>.NotFound("Turno no encontrado.");
+
+            a.NeedsContact = false;
+            a.ContactedAt = DateTime.UtcNow;
+            AddHistory(id, "Contacted", a.Status, a.Status, byUserId, string.IsNullOrWhiteSpace(note) ? "Cliente avisado." : note);
+            await _context.SaveChangesAsync();
+            return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(businessId, id))!);
+        }
+
+        // Marca turnos que chocan con una ausencia (lo llama TimeOffService)
+        public async Task FlagForTimeOffAsync(IEnumerable<Guid> appointmentIds, string reason)
+        {
+            var ids = appointmentIds.ToList();
+            var lista = await _context.Appointments.Where(a => ids.Contains(a.AppointmentId)).ToListAsync();
+            foreach (var a in lista)
+            {
+                a.NeedsContact = true;
+                a.ContactReason = reason;
+                a.ContactedAt = null;
+            }
         }
 
         // ---------------------------------------------------------------- Auxiliares
@@ -382,7 +466,10 @@ namespace AgendaApp.Services
             Source = a.Source,
             CreatedAt = a.CreatedAt,
             StartedAt = a.StartedAt,
-            CompletedAt = a.CompletedAt
+            CompletedAt = a.CompletedAt,
+            NeedsContact = a.NeedsContact,
+            ContactReason = a.ContactReason,
+            ContactedAt = a.ContactedAt
         };
     }
 }

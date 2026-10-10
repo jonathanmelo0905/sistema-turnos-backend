@@ -26,6 +26,9 @@ namespace AgendaApp.Dtos
         public DateTime CreatedAt { get; set; }
         public DateTime? StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
+        public bool NeedsContact { get; set; }
+        public string? ContactReason { get; set; }
+        public DateTime? ContactedAt { get; set; }
     }
 
     public class AppointmentDetailDto : AppointmentDto

@@ -49,6 +49,14 @@ namespace AgendaApp.Context
         public DateTime? CompletedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 
+        // Hay que avisarle al cliente (cambio, cesión, cancelación o ausencia del colaborador)
+        public bool NeedsContact { get; set; }
+
+        [MaxLength(200)]
+        public string? ContactReason { get; set; }
+
+        public DateTime? ContactedAt { get; set; }
+
         public ICollection<AppointmentHistory> History { get; set; } = new List<AppointmentHistory>();
 
         // 🔗 Relaciones

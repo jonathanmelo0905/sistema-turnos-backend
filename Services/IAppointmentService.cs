@@ -21,5 +21,10 @@ namespace AgendaApp.Services
         // callerCanActOnBehalf: true si el caller es Owner o tiene el permiso flexibility.approve
         Task<ServiceResult<AppointmentDto>> ApproveOutOfHoursAsync(Guid id, Guid callerId, bool callerCanActOnBehalf);
         Task<ServiceResult<AppointmentDto>> RejectOutOfHoursAsync(Guid id, Guid callerId, bool callerCanActOnBehalf);
+
+        // Turnos que hay que avisarle al cliente (cambios del personal, ausencias)
+        Task<List<AppointmentDto>> ToContactAsync(Guid businessId, Guid? userId);
+        Task<ServiceResult<AppointmentDto>> MarkContactedAsync(Guid businessId, Guid id, Guid byUserId, string? note);
+        Task FlagForTimeOffAsync(IEnumerable<Guid> appointmentIds, string reason);
     }
 }

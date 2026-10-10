@@ -25,6 +25,7 @@ namespace AgendaApp.Context
         public DbSet<Category> Categories { get; set; }
         public DbSet<TimeOffRequest> TimeOffRequests { get; set; }
         public DbSet<AppointmentHistory> AppointmentHistory { get; set; }
+        public DbSet<StaffNotification> StaffNotifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -117,6 +118,12 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Business>().HasIndex(b => b.Slug).IsUnique().HasDatabaseName("IX_Businesses_Slug");
             modelBuilder.Entity<Business>().Property(b => b.CancelLimitHours).HasDefaultValue(2);
             modelBuilder.Entity<Client>().HasIndex(c => c.AccessToken).HasDatabaseName("IX_Clients_AccessToken");
+
+            foreach (var prop in new[] { "NotificationId", "BusinessId", "UserId", "AppointmentId" })
+                modelBuilder.Entity<StaffNotification>().Property(prop).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<StaffNotification>()
+                .HasIndex(n => new { n.UserId, n.ReadAt, n.CreatedAt })
+                .HasDatabaseName("IX_StaffNotifications_User");
 
             modelBuilder.Entity<AppointmentHistory>().Property(h => h.HistoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<AppointmentHistory>().Property(h => h.AppointmentId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");

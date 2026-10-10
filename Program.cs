@@ -47,6 +47,7 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ITimeOffService, TimeOffService>();
 builder.Services.AddScoped<IPublicService, PublicService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();

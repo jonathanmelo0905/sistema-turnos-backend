@@ -101,6 +101,24 @@ namespace AgendaApp.Controllers
         public Task<ActionResult<AppointmentDto>> Cancel(Guid id, [FromQuery] string? reason) =>
             ChangeStatus(id, new AppointmentStatusDto { Status = AppointmentStatus.Cancelled, Note = reason ?? "Cancelado desde el panel." });
 
+        // GET /api/appointments/to-contact — turnos por avisar al cliente (propios o del equipo)
+        [HttpGet("to-contact")]
+        public async Task<ActionResult<List<AppointmentDto>>> ToContact()
+        {
+            Guid? userId = await GestionaEquipo() ? null : _tenant.UserId;
+            return Ok(await _appointments.ToContactAsync(_tenant.BusinessId, userId));
+        }
+
+        // POST /api/appointments/{id}/contacted { note }
+        [HttpPost("{id:guid}/contacted")]
+        public async Task<ActionResult<AppointmentDto>> Contacted(Guid id, [FromBody] AppointmentStatusDto? dto)
+        {
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
+            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            return Map(await _appointments.MarkContactedAsync(_tenant.BusinessId, id, _tenant.UserId, dto?.Note));
+        }
+
         // Aprobar / rechazar turnos fuera de horario: el colaborador del turno o quien tenga flexibility.approve
         [HttpPost("{id:guid}/approve")]
         public async Task<ActionResult<AppointmentDto>> ApproveOutOfHours(Guid id)
