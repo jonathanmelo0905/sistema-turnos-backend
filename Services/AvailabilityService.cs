@@ -11,11 +11,13 @@ namespace AgendaApp.Services
 
         private readonly AgendaProDbContext _context;
         private readonly ILogger<AvailabilityService> _logger;
+        private readonly IValleyService _valley;
 
-        public AvailabilityService(AgendaProDbContext context, ILogger<AvailabilityService> logger)
+        public AvailabilityService(AgendaProDbContext context, ILogger<AvailabilityService> logger, IValleyService valley)
         {
             _context = context;
             _logger = logger;
+            _valley = valley;
         }
 
         /// <summary>
@@ -120,6 +122,9 @@ namespace AgendaApp.Services
                 durationMin = service.DurationMin;
             }
 
+            // Horas Valle de la empresa (en caché); solo importan cuando se consulta con servicio
+            var valle = durationMin.HasValue ? await _valley.GetStateAsync(user.BusinessId) : null;
+
             var response = new AvailabilityResponseDto
             {
                 UserId = userId,
@@ -166,6 +171,10 @@ namespace AgendaApp.Services
                     foreach (var (ini, fin) in dayIntervals)
                         for (var t = RoundUp(ini); t + dur <= fin; t += TimeSpan.FromMinutes(SlotStepMin))
                             day.Starts.Add(date + t);
+
+                    if (valle != null)
+                        foreach (var s in day.Starts)
+                            if (_valley.Quote(valle, s, durationMin.Value) is { Pct: > 0 } q) day.Valley.Add(q);
                 }
 
                 response.Days.Add(day);
@@ -200,7 +209,8 @@ namespace AgendaApp.Services
                     UserId = u.UserId,
                     Name = u.Name,
                     Starts = d?.Starts ?? new List<DateTime>(),
-                    TimeOff = d?.TimeOff
+                    TimeOff = d?.TimeOff,
+                    Valley = d?.Valley ?? new List<ValleyQuoteDto>()
                 });
             }
             return ServiceResult<List<StaffAvailabilityDto>>.Ok(result);

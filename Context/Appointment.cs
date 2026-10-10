@@ -34,6 +34,12 @@ namespace AgendaApp.Context
         [Column(TypeName = "decimal(10,2)")]
         public decimal? Price { get; set; }
 
+        // Horas Valle: precio de lista sin descuento y % aplicado (Price ya trae el descuento)
+        [Column(TypeName = "decimal(10,2)")]
+        public decimal? ListPrice { get; set; }
+
+        public int? ValleyDiscountPct { get; set; }
+
         [MaxLength(300)]
         public string? Notes { get; set; }
 

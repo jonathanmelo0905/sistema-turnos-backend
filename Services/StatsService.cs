@@ -22,7 +22,7 @@ namespace AgendaApp.Services
         }
 
         private record Fila(Guid Id, Guid UserId, string UserName, Guid ClientId, Guid ServiceId, string ServiceName,
-            DateTime Start, DateTime End, string Status, decimal Price, string Source);
+            DateTime Start, DateTime End, string Status, decimal Price, string Source, decimal? ListPrice, int? ValleyPct);
 
         public async Task<StatsDto> GetAsync(Guid businessId, DateTime from, DateTime to, Guid? userId)
         {
@@ -97,7 +97,7 @@ namespace AgendaApp.Services
                 .OrderByDescending(s => s.Count).ToList();
 
             // Mapa de calor día × hora, marcando las horas en que la empresa atiende
-            var abierto = await OpenHoursAsync(businessId);
+            var abierto = await OpenHoursAsync(_context, businessId);
             for (var dow = 1; dow <= 7; dow++)
                 for (var h = 6; h <= 22; h++)
                     dto.Heatmap.Add(new StatsHeatCellDto
@@ -112,6 +112,8 @@ namespace AgendaApp.Services
             dto.SlowHours = dto.Heatmap.Where(c => c.Open)
                 .OrderBy(c => c.Count).ThenBy(c => c.DayOfWeek).ThenBy(c => c.Hour)
                 .Take(5).ToList();
+
+            dto.Valley = await ValleyAsync(businessId, from, to, dias, userId);
 
             // Reseñas del periodo
             var dist = Enumerable.Range(1, 5).Select(i => ratings.Count(r => r.Rating == i)).ToArray();
@@ -130,7 +132,7 @@ namespace AgendaApp.Services
             if (userId.HasValue) q = q.Where(a => a.UserId == userId.Value);
 
             return await q.Select(a => new Fila(a.AppointmentId, a.UserId, a.User.Name, a.ClientId, a.serviceId, a.Service.Name,
-                    a.DateTimeStart, a.DateTimeEnd, a.Status, a.Price ?? a.Service.Price, a.Source))
+                    a.DateTimeStart, a.DateTimeEnd, a.Status, a.Price ?? a.Service.Price, a.Source, a.ListPrice, a.ValleyDiscountPct))
                 .ToListAsync();
         }
 
@@ -170,6 +172,80 @@ namespace AgendaApp.Services
             };
         }
 
+        // Horas Valle: cuántos turnos tomaron el descuento y qué tan rentable fue
+        // Se mide por fecha de RESERVA (CreatedAt), no por fecha del turno: una promoción se toma hoy
+        // para un turno de los próximos días y debe contar en el periodo en que se reservó.
+        private async Task<List<Fila>> LoadBookedAsync(Guid businessId, DateTime from, DateTime to, Guid? userId)
+        {
+            var desde = from.ToUniversalTime();
+            var hasta = to.AddDays(1).ToUniversalTime();
+            var q = _context.Appointments.AsNoTracking()
+                .Where(a => a.BusinessId == businessId && a.CreatedAt >= desde && a.CreatedAt < hasta
+                    && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.RejectedOutOfHours);
+            if (userId.HasValue) q = q.Where(a => a.UserId == userId.Value);
+            return await q.Select(a => new Fila(a.AppointmentId, a.UserId, a.User.Name, a.ClientId, a.serviceId, a.Service.Name,
+                    a.DateTimeStart, a.DateTimeEnd, a.Status, a.Price ?? a.Service.Price, a.Source, a.ListPrice, a.ValleyDiscountPct))
+                .ToListAsync();
+        }
+
+        private async Task<StatsValleyDto> ValleyAsync(Guid businessId, DateTime from, DateTime to, int dias, Guid? userId)
+        {
+            var reservados = await LoadBookedAsync(businessId, from, to, userId);
+            var previos = await LoadBookedAsync(businessId, from.AddDays(-dias), from.AddDays(-1), userId);
+            var activos = reservados;
+            var valle = reservados.Where(f => f.ValleyPct > 0).ToList();
+            var porAtender = valle.Where(f => f.Status is AppointmentStatus.Pending or AppointmentStatus.Confirmed or AppointmentStatus.InProgress or AppointmentStatus.PendingOutOfHours).ToList();
+            var completados = valle.Where(f => f.Status == AppointmentStatus.Completed).ToList();
+            var noShow = valle.Count(f => f.Status == AppointmentStatus.NoShow);
+
+            // Clientes nuevos: su primer turno (no cancelado) en la empresa fue con descuento valle dentro del rango
+            var clientes = valle.Select(f => f.ClientId).Distinct().ToList();
+            var historia = await _context.Appointments.AsNoTracking()
+                .Where(a => a.BusinessId == businessId && clientes.Contains(a.ClientId)
+                    && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.RejectedOutOfHours)
+                .Select(a => new { a.AppointmentId, a.ClientId, a.DateTimeStart })
+                .ToListAsync();
+            var primeros = historia.GroupBy(a => a.ClientId).Select(g => g.MinBy(a => a.DateTimeStart)!).ToList();
+
+            return new StatsValleyDto
+            {
+                Enabled = await _context.ValleyConfigs.AnyAsync(v => v.BusinessId == businessId && v.Enabled),
+                Bookings = valle.Count,
+                PreviousBookings = previos.Count(f => f.ValleyPct > 0),
+                SharePct = activos.Count > 0 ? Math.Round(valle.Count * 100.0 / activos.Count, 1) : 0,
+                Completed = completados.Count,
+                NoShowRate = completados.Count + noShow > 0 ? Math.Round(noShow * 100.0 / (completados.Count + noShow), 1) : 0,
+                Revenue = completados.Sum(f => f.Price),
+                DiscountGiven = valle.Sum(f => (f.ListPrice ?? f.Price) - f.Price),
+                AvgDiscountPct = valle.Count > 0 ? Math.Round(valle.Average(f => f.ValleyPct!.Value), 1) : 0,
+                NewClients = primeros.Count(p => valle.Any(v => v.Id == p.AppointmentId)),
+                Upcoming = porAtender.Count,
+                Estimated = porAtender.Sum(f => f.Price),
+                WebShare = valle.Count > 0 ? Math.Round(valle.Count(f => f.Source == "Web") * 100.0 / valle.Count, 1) : 0,
+                TopSlots = valle.GroupBy(f => (Dow(f.Start), f.Start.Hour))
+                    .Select(g => new StatsHeatCellDto { DayOfWeek = g.Key.Item1, Hour = g.Key.Hour, Count = g.Count(), Open = true })
+                    .OrderByDescending(c => c.Count).ThenBy(c => c.DayOfWeek).ThenBy(c => c.Hour).Take(5).ToList(),
+                TopServices = valle.GroupBy(f => new { f.ServiceId, f.ServiceName })
+                    .Select(g => new StatsServiceDto
+                    {
+                        ServiceId = g.Key.ServiceId,
+                        Name = g.Key.ServiceName,
+                        Count = g.Count(),
+                        Revenue = g.Where(f => f.Status == AppointmentStatus.Completed).Sum(f => f.Price)
+                    })
+                    .OrderByDescending(s => s.Count).Take(5).ToList(),
+                ByWeek = valle.GroupBy(f => f.Start.Date.AddDays(-(Dow(f.Start) - 1)))
+                    .OrderBy(g => g.Key)
+                    .Select(g => new StatsDayDto
+                    {
+                        Date = g.Key,
+                        Count = g.Count(),
+                        Completed = g.Count(f => f.Status == AppointmentStatus.Completed),
+                        Revenue = g.Where(f => f.Status == AppointmentStatus.Completed).Sum(f => f.Price)
+                    }).ToList()
+            };
+        }
+
         // Minutos de jornada por colaborador en el rango (empresa ∩ colaborador − pausa − ausencias aprobadas de día completo)
         private async Task<Dictionary<Guid, double>> AvailableMinutesAsync(Guid businessId, DateTime from, DateTime to)
         {
@@ -202,9 +278,10 @@ namespace AgendaApp.Services
             return resultado;
         }
 
-        private async Task<HashSet<(int, int)>> OpenHoursAsync(Guid businessId)
+        // Franjas (día, hora) en que la empresa atiende; también las usa ValleyService
+        internal static async Task<HashSet<(int, int)>> OpenHoursAsync(AgendaProDbContext context, Guid businessId)
         {
-            var empresa = await _context.BusinessSchedules.AsNoTracking().Where(b => b.BusinessId == businessId && b.IsOpen).ToListAsync();
+            var empresa = await context.BusinessSchedules.AsNoTracking().Where(b => b.BusinessId == businessId && b.IsOpen).ToListAsync();
             var set = new HashSet<(int, int)>();
             foreach (var b in empresa)
             {
@@ -214,7 +291,7 @@ namespace AgendaApp.Services
             return set;
         }
 
-        private static bool Ocupa(string status) => status != AppointmentStatus.Cancelled && status != AppointmentStatus.RejectedOutOfHours;
-        private static int Dow(DateTime d) => d.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)d.DayOfWeek;
+        internal static bool Ocupa(string status) => status != AppointmentStatus.Cancelled && status != AppointmentStatus.RejectedOutOfHours;
+        internal static int Dow(DateTime d) => d.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)d.DayOfWeek;
     }
 }

@@ -24,14 +24,16 @@ namespace AgendaApp.Services
         private readonly AvailabilityService _availability;
         private readonly ILogger<PublicService> _logger;
         private readonly INotificationService _notify;
+        private readonly IValleyService _valley;
 
-        public PublicService(AgendaProDbContext context, IAppointmentService appointments, AvailabilityService availability, ILogger<PublicService> logger, INotificationService notify)
+        public PublicService(AgendaProDbContext context, IAppointmentService appointments, AvailabilityService availability, ILogger<PublicService> logger, INotificationService notify, IValleyService valley)
         {
             _context = context;
             _appointments = appointments;
             _availability = availability;
             _logger = logger;
             _notify = notify;
+            _valley = valley;
         }
 
         public async Task<List<PublicBusinessListItemDto>> ListBusinessesAsync() =>
@@ -108,8 +110,23 @@ namespace AgendaApp.Services
             // Privacidad: solo el primer nombre del cliente y del profesional
             ultimas.ForEach(r => { r.ClientName = r.ClientName.Split(' ')[0]; r.StaffName = r.StaffName?.Split(' ')[0]; });
 
+            // Horas Valle: solo las franjas con descuento, para la sugerencia y la explicación
+            var valle = await _valley.GetStateAsync(b.BusinessId);
+            var ventanas = valle.Cells.Where(c => c.IsValley && c.Pct > 0).ToList();
+            var valley = valle.Config.Enabled && ventanas.Count > 0
+                ? new PublicValleyDto
+                {
+                    MinOverlapPct = valle.Config.MinOverlapPct,
+                    Proportional = valle.Config.Proportional,
+                    DiscountMax = ventanas.Max(c => c.Pct),
+                    Days = valle.Days,
+                    Windows = ventanas
+                }
+                : null;
+
             return new PublicBusinessDto
             {
+                Valley = valley,
                 RatingAverage = Math.Round(ratingAvg, 1),
                 RatingCount = ratingCount,
                 Reviews = ultimas,
@@ -360,6 +377,8 @@ namespace AgendaApp.Services
                     ServiceId = a.serviceId,
                     ServiceName = a.Service.Name,
                     Price = a.Price ?? a.Service.Price,
+                    ListPrice = a.ListPrice,
+                    ValleyDiscountPct = a.ValleyDiscountPct,
                     UserId = a.UserId,
                     StaffName = a.User.Name,
                     CancelReason = a.CancelReason,

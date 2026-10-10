@@ -17,6 +17,8 @@ namespace AgendaApp.Dtos
         public string? ServiceName { get; set; }
         public int DurationMin { get; set; }
         public decimal? Price { get; set; }
+        public decimal? ListPrice { get; set; }
+        public int? ValleyDiscountPct { get; set; }
         public DateTime DateTimeStart { get; set; }
         public DateTime DateTimeEnd { get; set; }
         public string Status { get; set; } = "Pending";

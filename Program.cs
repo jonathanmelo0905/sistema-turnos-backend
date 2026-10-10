@@ -48,6 +48,7 @@ builder.Services.AddScoped<ITimeOffService, TimeOffService>();
 builder.Services.AddScoped<IPublicService, PublicService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
+builder.Services.AddScoped<IValleyService, ValleyService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();

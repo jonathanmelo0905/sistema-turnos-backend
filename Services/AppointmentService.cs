@@ -12,13 +12,15 @@ namespace AgendaApp.Services
         private readonly AvailabilityService _availabilityService;
         private readonly ILogger<AppointmentService> _logger;
         private readonly INotificationService _notify;
+        private readonly IValleyService _valley;
 
-        public AppointmentService(AgendaProDbContext context, AvailabilityService availabilityService, ILogger<AppointmentService> logger, INotificationService notify)
+        public AppointmentService(AgendaProDbContext context, AvailabilityService availabilityService, ILogger<AppointmentService> logger, INotificationService notify, IValleyService valley)
         {
             _context = context;
             _availabilityService = availabilityService;
             _logger = logger;
             _notify = notify;
+            _valley = valley;
         }
 
         // ---------------------------------------------------------------- Consultas
@@ -104,6 +106,11 @@ namespace AgendaApp.Services
 
             // 🔒 Sección crítica: el chequeo de solapamiento y el INSERT van en la misma transacción
             // con SELECT ... FOR UPDATE, para que dos reservas simultáneas no tomen el mismo hueco.
+            // Horas Valle: el descuento lo calcula siempre el servidor (no se confía en el del cliente)
+            var valle = outOfHours ? null : await _valley.QuoteAsync(businessId, start, service.DurationMin);
+            var descuento = valle?.Pct > 0 ? valle.Pct : (int?)null;
+            var precio = descuento.HasValue ? Math.Round(service.Price * (100 - descuento.Value) / 100m, 0) : service.Price;
+
             await using var tx = await _context.Database.BeginTransactionAsync();
             var conflict = await LockConflictsAsync(dto.UserId, clientId, start, end, null);
             if (conflict != null)
@@ -121,8 +128,10 @@ namespace AgendaApp.Services
                 serviceId = dto.ServiceId,
                 DateTimeStart = start,
                 DateTimeEnd = end,
-                Price = service.Price,
-                Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
+                Price = precio,
+                ListPrice = service.Price,
+                ValleyDiscountPct = descuento,
+                Notes =string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
                 Source = source,
                 CreatedByUserId = byUserId,
                 Status = outOfHours ? AppointmentStatus.PendingOutOfHours : AppointmentStatus.Pending,
@@ -458,6 +467,8 @@ namespace AgendaApp.Services
             ServiceName = a.Service.Name,
             DurationMin = MySqlDbFunctionsExtensions.DateDiffMinute(EF.Functions, a.DateTimeStart, a.DateTimeEnd),
             Price = a.Price ?? a.Service.Price,
+            ListPrice = a.ListPrice,
+            ValleyDiscountPct = a.ValleyDiscountPct,
             DateTimeStart = a.DateTimeStart,
             DateTimeEnd = a.DateTimeEnd,
             Status = a.Status,

@@ -65,6 +65,9 @@ namespace AgendaApp.Migrations
                     b.Property<DateTime>("DateTimeStart")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<decimal?>("ListPrice")
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<bool>("NeedsContact")
                         .HasColumnType("tinyint(1)");
 
@@ -95,6 +98,9 @@ namespace AgendaApp.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("char(36)");
+
+                    b.Property<int?>("ValleyDiscountPct")
+                        .HasColumnType("int");
 
                     b.Property<Guid>("serviceId")
                         .HasColumnType("char(36)");
@@ -403,6 +409,12 @@ namespace AgendaApp.Migrations
                             PermissionId = 7,
                             Code = "flexibility.approve",
                             Description = "Aprobar ausencias y turnos fuera de horario"
+                        },
+                        new
+                        {
+                            PermissionId = 8,
+                            Code = "valley.manage",
+                            Description = "Configurar Horas Valle (descuentos en horas flojas)"
                         });
                 });
 
@@ -867,6 +879,47 @@ namespace AgendaApp.Migrations
                     b.ToTable("UserServices");
                 });
 
+            modelBuilder.Entity("AgendaApp.Context.ValleyConfig", b =>
+                {
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("BusinessId"), "utf8mb4");
+
+                    b.Property<int>("DiscountMax")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DiscountMin")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("MinOverlapPct")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)")
+                        .HasDefaultValue("Percent");
+
+                    b.Property<bool>("Proportional")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal>("Threshold")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("BusinessId");
+
+                    b.ToTable("ValleyConfigs");
+                });
+
             modelBuilder.Entity("AgendaApp.Context.Appointment", b =>
                 {
                     b.HasOne("AgendaApp.Context.Business", "Business")
@@ -1091,6 +1144,17 @@ namespace AgendaApp.Migrations
                     b.Navigation("Service");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.ValleyConfig", b =>
+                {
+                    b.HasOne("AgendaApp.Context.Business", "Business")
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Business");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.Appointment", b =>

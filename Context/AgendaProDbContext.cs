@@ -27,6 +27,7 @@ namespace AgendaApp.Context
         public DbSet<AppointmentHistory> AppointmentHistory { get; set; }
         public DbSet<StaffNotification> StaffNotifications { get; set; }
         public DbSet<Review> Reviews { get; set; }
+        public DbSet<ValleyConfig> ValleyConfigs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -161,6 +162,9 @@ namespace AgendaApp.Context
             modelBuilder.Entity<TimeOffRequest>()
                 .HasIndex(t => new { t.BusinessId, t.Status })
                 .HasDatabaseName("IX_TimeOff_Business_Status");
+
+            modelBuilder.Entity<ValleyConfig>().Property(v => v.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<ValleyConfig>().Property(v => v.Mode).HasDefaultValue(ValleyModes.Percent);
 
             modelBuilder.Entity<Service>()
                 .HasOne(s => s.Category)

@@ -68,5 +68,28 @@ namespace AgendaApp.Dtos
         public double RatingAverage { get; set; }
         public int RatingCount { get; set; }
         public int[] RatingDistribution { get; set; } = new int[5];
+
+        // Efectividad de Horas Valle en el periodo
+        public StatsValleyDto Valley { get; set; } = new();
+    }
+
+    public class StatsValleyDto
+    {
+        public bool Enabled { get; set; }            // configuración actual de la empresa
+        public int Bookings { get; set; }            // reservas con descuento hechas en el periodo (sin cancelar)
+        public int PreviousBookings { get; set; }    // mismo dato en el periodo anterior
+        public double SharePct { get; set; }         // % de los turnos del periodo
+        public int Completed { get; set; }
+        public int Upcoming { get; set; }            // reservados con descuento aún por atender
+        public decimal Estimated { get; set; }       // lo que dejarán esos turnos
+        public double NoShowRate { get; set; }       // % de no asistió entre los que debían atenderse
+        public decimal Revenue { get; set; }         // ingresos de los atendidos con descuento
+        public decimal DiscountGiven { get; set; }   // lo que se deja de cobrar en las reservas con descuento
+        public double AvgDiscountPct { get; set; }
+        public int NewClients { get; set; }          // su primer turno en la empresa fue en hora valle
+        public double WebShare { get; set; }         // % reservados en línea
+        public List<StatsHeatCellDto> TopSlots { get; set; } = new();     // franjas valle más tomadas
+        public List<StatsServiceDto> TopServices { get; set; } = new();   // servicios más reservados con descuento
+        public List<StatsDayDto> ByWeek { get; set; } = new();            // turnos valle por semana (Date = lunes)
     }
 }

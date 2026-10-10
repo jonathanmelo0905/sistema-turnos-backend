@@ -44,7 +44,7 @@ for (const s of staff) await call('POST', '/Users', { businessId, ...s, password
 const users = Object.fromEntries(await Promise.all(staff.map(async s => [s.email, (await login(s.email)).userId])));
 
 // Encargado: permisos de persona de confianza
-for (const code of ['collaborators.manage', 'services.manage', 'stats.view', 'clients.contacts.view', 'flexibility.approve'])
+for (const code of ['collaborators.manage', 'services.manage', 'stats.view', 'clients.contacts.view', 'flexibility.approve', 'valley.manage'])
   await call('POST', `/users/${users['encargado@demo.com']}/permissions/${code}`, null, token);
 
 // 4. Servicios

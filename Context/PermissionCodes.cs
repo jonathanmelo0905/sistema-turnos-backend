@@ -9,6 +9,7 @@ namespace AgendaApp.Context
         public const string StatsView = "stats.view";
         public const string ClientsContactsView = "clients.contacts.view";
         public const string FlexibilityApprove = "flexibility.approve";
+        public const string ValleyManage = "valley.manage";
 
         public static readonly IReadOnlyDictionary<string, string> Catalog = new Dictionary<string, string>
         {
@@ -18,7 +19,8 @@ namespace AgendaApp.Context
             [AccountingView] = "Ver contabilidad",
             [StatsView] = "Ver estadísticas de flujo de clientes",
             [ClientsContactsView] = "Ver contactos de clientes",
-            [FlexibilityApprove] = "Aprobar ausencias y turnos fuera de horario"
+            [FlexibilityApprove] = "Aprobar ausencias y turnos fuera de horario",
+            [ValleyManage] = "Configurar Horas Valle (descuentos en horas flojas)"
         };
     }
 }

@@ -16,6 +16,9 @@ namespace AgendaApp.Dtos
 
         // Ausencia aprobada que afecta el día (para mostrarla en la agenda)
         public string? TimeOff { get; set; }
+
+        // Horas Valle: inicios con descuento (solo con servicio y si la empresa las tiene activas)
+        public List<ValleyQuoteDto> Valley { get; set; } = new();
     }
 
     public class StaffAvailabilityDto
@@ -24,6 +27,7 @@ namespace AgendaApp.Dtos
         public string Name { get; set; } = null!;
         public List<DateTime> Starts { get; set; } = new();
         public string? TimeOff { get; set; }
+        public List<ValleyQuoteDto> Valley { get; set; } = new();
     }
 
     public class AvailabilityResponseDto

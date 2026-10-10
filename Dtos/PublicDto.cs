@@ -24,6 +24,9 @@ namespace AgendaApp.Dtos
         public double RatingAverage { get; set; }
         public int RatingCount { get; set; }
         public List<PublicReviewDto> Reviews { get; set; } = new();
+
+        // Horas Valle activas (null si la empresa no las usa o no hay datos suficientes)
+        public PublicValleyDto? Valley { get; set; }
     }
 
     public class PublicCategoryDto
@@ -103,6 +106,8 @@ namespace AgendaApp.Dtos
         public Guid ServiceId { get; set; }
         public string ServiceName { get; set; } = null!;
         public decimal? Price { get; set; }
+        public decimal? ListPrice { get; set; }
+        public int? ValleyDiscountPct { get; set; }
         public Guid UserId { get; set; }
         public string StaffName { get; set; } = null!;
         public bool CanCancel { get; set; }
