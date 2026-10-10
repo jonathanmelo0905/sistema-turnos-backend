@@ -52,6 +52,15 @@ namespace AgendaApp.Services
             business.Facebook = Clean(dto.Facebook);
             business.TikTok = Clean(dto.TikTok);
             business.AllowOutOfHoursBooking = dto.AllowOutOfHoursBooking;
+            business.CancelLimitHours = dto.CancelLimitHours;
+
+            if (!string.IsNullOrWhiteSpace(dto.Slug))
+            {
+                var slug = SlugHelper.Normalize(dto.Slug);
+                if (await _context.Businesses.AnyAsync(b => b.Slug == slug && b.BusinessId != businessId))
+                    return ServiceResult<BusinessResponseDto>.Conflict("Esa dirección ya la usa otra empresa. Prueba con otra.");
+                business.Slug = slug;
+            }
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Perfil del negocio {BusinessId} actualizado.", businessId);
@@ -74,6 +83,8 @@ namespace AgendaApp.Services
             Facebook = business.Facebook,
             TikTok = business.TikTok,
             AllowOutOfHoursBooking = business.AllowOutOfHoursBooking,
+            Slug = business.Slug,
+            CancelLimitHours = business.CancelLimitHours,
             PlanId = business.PlanId,
             CreatedAt = business.CreatedAt,
             Users = business.Users.Select(u => new UserResponseDto

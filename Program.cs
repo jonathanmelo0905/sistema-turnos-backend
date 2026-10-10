@@ -46,6 +46,7 @@ builder.Services.AddScoped<IUserServicesService, UserServicesService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ITimeOffService, TimeOffService>();
+builder.Services.AddScoped<IPublicService, PublicService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();
@@ -87,6 +88,12 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// Empresas sin dirección pública (creadas antes de la Fase 4) reciben una
+using (var scope = app.Services.CreateScope())
+{
+    await SlugHelper.BackfillAsync(scope.ServiceProvider.GetRequiredService<AgendaProDbContext>());
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

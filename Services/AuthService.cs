@@ -37,6 +37,7 @@ namespace AgendaApp.Services
                 Phone = dto.Phone,
                 Address = dto.Address,
                 PlanId = 1,
+                Slug = await SlugHelper.UniqueAsync(_context, dto.BusinessName),
                 CreatedAt = DateTime.UtcNow
             };
 

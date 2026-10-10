@@ -13,6 +13,8 @@ namespace AgendaApp.Dtos
         public string? Facebook { get; set; }
         public string? TikTok { get; set; }
         public bool AllowOutOfHoursBooking { get; set; }
+        public string? Slug { get; set; }
+        public int CancelLimitHours { get; set; }
         public int PlanId { get; set; }
         public DateTime CreatedAt { get; set; }
 

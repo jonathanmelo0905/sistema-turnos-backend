@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace AgendaApp.Context
 {
@@ -21,6 +21,13 @@ namespace AgendaApp.Context
 
         [MaxLength(500)]
         public string? Description { get; set; }
+
+        // Dirección pública de la página de reservas: /{Slug}
+        [MaxLength(80)]
+        public string? Slug { get; set; }
+
+        // Horas mínimas de anticipación para que el cliente cancele en línea
+        public int CancelLimitHours { get; set; } = 2;
 
         // Redes y contacto público (se muestran en la página de reservas del cliente)
         [MaxLength(30)]

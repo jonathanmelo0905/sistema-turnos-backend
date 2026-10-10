@@ -166,6 +166,11 @@ namespace AgendaApp.Migrations
                     b.Property<bool>("AllowOutOfHoursBooking")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<int>("CancelLimitHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(2);
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -198,6 +203,10 @@ namespace AgendaApp.Migrations
                     b.Property<int>("PlanId")
                         .HasColumnType("int");
 
+                    b.Property<string>("Slug")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
                     b.Property<string>("TikTok")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -209,6 +218,10 @@ namespace AgendaApp.Migrations
                     b.HasKey("BusinessId");
 
                     b.HasIndex("PlanId");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Businesses_Slug");
 
                     b.ToTable("Businesses");
                 });
@@ -281,8 +294,15 @@ namespace AgendaApp.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("AccessToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Email")
                         .HasColumnType("longtext");
@@ -297,6 +317,9 @@ namespace AgendaApp.Migrations
                         .HasColumnType("longtext");
 
                     b.HasKey("ClientId");
+
+                    b.HasIndex("AccessToken")
+                        .HasDatabaseName("IX_Clients_AccessToken");
 
                     b.HasIndex("BusinessId");
 

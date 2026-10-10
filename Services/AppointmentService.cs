@@ -301,7 +301,18 @@ namespace AgendaApp.Services
             var email = dto.NewClient.Email?.Trim().ToLowerInvariant();
             var existing = await _context.Clients.FirstOrDefaultAsync(c => c.BusinessId == businessId &&
                 ((phone != null && phone != "" && c.Phone == phone) || (email != null && email != "" && c.Email == email)));
-            if (existing != null) return ServiceResult<Guid>.Ok(existing.ClientId);
+            if (existing != null)
+            {
+                // Mantener los datos de contacto al día: el cliente pudo cambiar de número
+                // (solo si ese teléfono no pertenece a otro cliente de la empresa)
+                if (!string.IsNullOrWhiteSpace(phone) && existing.Phone != phone &&
+                    !await _context.Clients.AnyAsync(c => c.BusinessId == businessId && c.Phone == phone && c.ClientId != existing.ClientId))
+                    existing.Phone = phone;
+                if (string.IsNullOrWhiteSpace(existing.Email) && !string.IsNullOrWhiteSpace(email))
+                    existing.Email = email;
+                await _context.SaveChangesAsync();
+                return ServiceResult<Guid>.Ok(existing.ClientId);
+            }
 
             var client = new Client
             {

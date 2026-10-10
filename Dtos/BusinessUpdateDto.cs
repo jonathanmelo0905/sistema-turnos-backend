@@ -33,5 +33,12 @@ namespace AgendaApp.Dtos
         public string? TikTok { get; set; }
 
         public bool AllowOutOfHoursBooking { get; set; }
+
+        // Dirección pública (/{slug}); vacío = se conserva la actual
+        [MaxLength(60)]
+        public string? Slug { get; set; }
+
+        [Range(0, 72)]
+        public int CancelLimitHours { get; set; } = 2;
     }
 }

@@ -114,6 +114,10 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Category>().Property(c => c.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Service>().Property(s => s.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
 
+            modelBuilder.Entity<Business>().HasIndex(b => b.Slug).IsUnique().HasDatabaseName("IX_Businesses_Slug");
+            modelBuilder.Entity<Business>().Property(b => b.CancelLimitHours).HasDefaultValue(2);
+            modelBuilder.Entity<Client>().HasIndex(c => c.AccessToken).HasDatabaseName("IX_Clients_AccessToken");
+
             modelBuilder.Entity<AppointmentHistory>().Property(h => h.HistoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<AppointmentHistory>().Property(h => h.AppointmentId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<AppointmentHistory>().Property(h => h.ByUserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
