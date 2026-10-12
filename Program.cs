@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using UserServiceImpl = AgendaApp.Services.UserService;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +24,35 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod()
             .AllowAnyHeader();
     });
+});
+
+// Límite de peticiones para la API pública (por IP, ventana de 1 minuto). Valores en "RateLimit:*".
+// Los usuarios con sesión (panel del negocio) no se limitan.
+var limiteLectura = builder.Configuration.GetValue("RateLimit:LecturaPorMinuto", 120);
+var limiteEscritura = builder.Configuration.GetValue("RateLimit:EscrituraPorMinuto", 20);
+builder.Services.AddRateLimiter(options =>
+{
+    RateLimitPartition<string> PorIp(HttpContext ctx, string politica, int limite) =>
+        ctx.User.Identity?.IsAuthenticated == true
+            ? RateLimitPartition.GetNoLimiter($"{politica}:sesion")
+            : RateLimitPartition.GetFixedWindowLimiter($"{politica}:{ctx.Connection.RemoteIpAddress}", _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = limite,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+
+    options.AddPolicy(RateLimitPolicies.PublicoLectura, ctx => PorIp(ctx, RateLimitPolicies.PublicoLectura, limiteLectura));
+    options.AddPolicy(RateLimitPolicies.PublicoEscritura, ctx => PorIp(ctx, RateLimitPolicies.PublicoEscritura, limiteEscritura));
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var espera))
+            context.HttpContext.Response.Headers.RetryAfter = ((int)espera.TotalSeconds).ToString();
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { message = "Hiciste demasiadas solicitudes seguidas. Espera un momento e intenta de nuevo." }, token);
+    };
 });
 
 // Registrar DbContext
@@ -121,6 +152,7 @@ app.UseAppExceptionHandling();
 app.UseHttpsRedirection();
 app.UseCors("AppCorsPolicy");
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization(); 
 
 app.MapControllers();

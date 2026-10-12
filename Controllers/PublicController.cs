@@ -1,7 +1,9 @@
 using AgendaApp.Dtos;
+using AgendaApp.Middleware;
 using AgendaApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AgendaApp.Controllers
 {
@@ -9,6 +11,7 @@ namespace AgendaApp.Controllers
     [ApiController]
     [Route("api/public")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicoLectura)]
     public class PublicController : ControllerBase
     {
         private readonly IPublicService _public;
@@ -32,6 +35,7 @@ namespace AgendaApp.Controllers
 
         // Reserva como invitado
         [HttpPost("businesses/{slug}/book")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
         public async Task<ActionResult<PublicBookResultDto>> Book(string slug, [FromBody] PublicBookDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -48,6 +52,7 @@ namespace AgendaApp.Controllers
 
         // Mis turnos con correo/teléfono + código de reserva
         [HttpPost("businesses/{slug}/lookup")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
         public async Task<ActionResult<PublicMyAppointmentsDto>> Lookup(string slug, [FromBody] PublicLookupDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -55,6 +60,7 @@ namespace AgendaApp.Controllers
         }
 
         [HttpPost("businesses/{slug}/appointments/{id:guid}/cancel")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
         public async Task<ActionResult<PublicAppointmentDto>> Cancel(string slug, Guid id, [FromBody] PublicCancelDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -63,6 +69,7 @@ namespace AgendaApp.Controllers
 
         // Calificar una atención (solo turnos atendidos, una vez)
         [HttpPost("businesses/{slug}/appointments/{id:guid}/review")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
         public async Task<ActionResult<PublicAppointmentDto>> Review(string slug, Guid id, [FromBody] PublicReviewCreateDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);

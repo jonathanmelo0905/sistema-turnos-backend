@@ -1,7 +1,9 @@
 using AgendaApp.Dtos;
+using AgendaApp.Middleware;
 using AgendaApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AgendaApp.Controllers
 {
@@ -20,6 +22,7 @@ namespace AgendaApp.Controllers
         // Público: el cliente sin cuenta necesita consultar disponibilidad antes de agendar (igual que ServicesController.GetServices)
         [HttpGet]
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.PublicoLectura)]
         public async Task<ActionResult<AvailabilityResponseDto>> GetAvailability(
             [FromQuery] Guid userId,
             [FromQuery] Guid? serviceId,
@@ -40,6 +43,7 @@ namespace AgendaApp.Controllers
         // Quién presta el servicio y a qué horas puede empezar ese día (reserva con "cualquiera")
         [HttpGet("service")]
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.PublicoLectura)]
         public async Task<ActionResult<List<StaffAvailabilityDto>>> GetServiceAvailability(
             [FromQuery] Guid businessId, [FromQuery] Guid serviceId, [FromQuery] DateTime date)
         {
