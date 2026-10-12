@@ -480,7 +480,9 @@ namespace AgendaApp.Services
             CompletedAt = a.CompletedAt,
             NeedsContact = a.NeedsContact,
             ContactReason = a.ContactReason,
-            ContactedAt = a.ContactedAt
+            ContactedAt = a.ContactedAt,
+            ReminderSentAt = a.ReminderSentAt,
+            ReminderChannel = a.ReminderChannel
         };
     }
 }

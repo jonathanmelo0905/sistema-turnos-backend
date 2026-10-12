@@ -42,5 +42,6 @@ namespace AgendaApp.Context
         public const string TimeOffReviewed = "TimeOffReviewed";
         public const string Reassigned = "Reassigned";
         public const string NewReview = "NewReview";
+        public const string Reminder = "Reminder";
     }
 }

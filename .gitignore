@@ -16,3 +16,6 @@ Thumbs.db
 
 ## Claude Code local settings
 .claude/
+
+## Correos de prueba (EmailService sin Smtp:Host)
+correos-dev/

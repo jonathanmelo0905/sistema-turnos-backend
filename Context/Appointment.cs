@@ -63,6 +63,12 @@ namespace AgendaApp.Context
 
         public DateTime? ContactedAt { get; set; }
 
+        // Recordatorio del día anterior: cuándo y por dónde se avisó ("WhatsApp" | "Email")
+        public DateTime? ReminderSentAt { get; set; }
+
+        [MaxLength(20)]
+        public string? ReminderChannel { get; set; }
+
         public ICollection<AppointmentHistory> History { get; set; } = new List<AppointmentHistory>();
 
         // 🔗 Relaciones

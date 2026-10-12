@@ -31,6 +31,14 @@ namespace AgendaApp.Dtos
         public bool NeedsContact { get; set; }
         public string? ContactReason { get; set; }
         public DateTime? ContactedAt { get; set; }
+        public DateTime? ReminderSentAt { get; set; }
+        public string? ReminderChannel { get; set; }
+    }
+
+    public class AppointmentReminderDto
+    {
+        // "WhatsApp" | "Email"
+        public string Channel { get; set; } = null!;
     }
 
     public class AppointmentDetailDto : AppointmentDto

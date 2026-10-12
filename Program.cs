@@ -49,6 +49,9 @@ builder.Services.AddScoped<IPublicService, PublicService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IValleyService, ValleyService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IReminderService, ReminderService>();
+builder.Services.AddHostedService<ReminderJob>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();

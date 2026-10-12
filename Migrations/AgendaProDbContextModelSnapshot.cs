@@ -78,6 +78,13 @@ namespace AgendaApp.Migrations
                     b.Property<decimal?>("Price")
                         .HasColumnType("decimal(10,2)");
 
+                    b.Property<string>("ReminderChannel")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("ReminderSentAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(20)

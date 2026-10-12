@@ -16,11 +16,15 @@ namespace AgendaApp.Controllers
     {
         private readonly IAppointmentService _appointments;
         private readonly ITenantGuard _tenant;
+        private readonly IReminderService _reminders;
+        private readonly IWebHostEnvironment _env;
 
-        public AppointmentsController(IAppointmentService appointments, ITenantGuard tenant)
+        public AppointmentsController(IAppointmentService appointments, ITenantGuard tenant, IReminderService reminders, IWebHostEnvironment env)
         {
             _appointments = appointments;
             _tenant = tenant;
+            _reminders = reminders;
+            _env = env;
         }
 
         private Task<bool> GestionaEquipo() => _tenant.HasPermissionAsync(PermissionCodes.CollaboratorsManage);
@@ -117,6 +121,24 @@ namespace AgendaApp.Controllers
             if (actual == null) return NotFound();
             if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
             return Map(await _appointments.MarkContactedAsync(_tenant.BusinessId, id, _tenant.UserId, dto?.Note));
+        }
+
+        // POST /api/appointments/{id}/reminder { channel: "WhatsApp" | "Email" } — recordatorio del día anterior
+        [HttpPost("{id:guid}/reminder")]
+        public async Task<ActionResult<AppointmentDto>> Reminder(Guid id, [FromBody] AppointmentReminderDto dto)
+        {
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
+            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            return Map(await _reminders.RecordarAsync(_tenant.BusinessId, id, _tenant.UserId, dto.Channel));
+        }
+
+        // POST /api/appointments/reminders/run — solo Development: corre el job de recordatorios (pruebas)
+        [HttpPost("reminders/run")]
+        public async Task<ActionResult<object>> RunReminders()
+        {
+            if (!_env.IsDevelopment()) return NotFound();
+            return Ok(new { created = await _reminders.GenerarAsync() });
         }
 
         // Aprobar / rechazar turnos fuera de horario: el colaborador del turno o quien tenga flexibility.approve
