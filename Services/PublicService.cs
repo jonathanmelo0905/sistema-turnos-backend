@@ -77,6 +77,7 @@ namespace AgendaApp.Services
                 {
                     UserId = u.UserId,
                     Name = u.Name,
+                    PhotoUrl = u.PhotoUrl,
                     ServiceIds = u.UserServices.Where(us => us.Service.Active).Select(us => us.ServiceId).ToList()
                 })
                 .ToListAsync();

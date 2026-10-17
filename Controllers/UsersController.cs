@@ -12,11 +12,13 @@ namespace AgendaApp.Controllers
     {
         private readonly IUserService _userService;
         private readonly ITenantGuard _tenant;
+        private readonly IUserPhotoService _fotos;
 
-        public UsersController(IUserService userService, ITenantGuard tenant)
+        public UsersController(IUserService userService, ITenantGuard tenant, IUserPhotoService fotos)
         {
             _userService = userService;
             _tenant = tenant;
+            _fotos = fotos;
         }
 
         // GET: api/users — usuarios del negocio del token
@@ -84,6 +86,35 @@ namespace AgendaApp.Controllers
                 ServiceErrorType.NotFound => NotFound(result.Error),
                 _ => NoContent()
             };
+        }
+
+        // POST: api/users/{id}/photo — multipart "file" (JPG, PNG o WEBP, máx. 2 MB)
+        [HttpPost("{id:guid}/photo")]
+        [Authorize(Roles = "Owner")]
+        [RequestSizeLimit(UserPhotoService.TamanoMaximo + 64 * 1024)]
+        public async Task<ActionResult<object>> UploadPhoto(Guid id, IFormFile file)
+        {
+            if (!await _tenant.UserInBusinessAsync(id))
+                return NotFound("Usuario no encontrado.");
+
+            var result = await _fotos.SubirAsync(id, file);
+            return result.ErrorType switch
+            {
+                ServiceErrorType.BadRequest => BadRequest(result.Error),
+                ServiceErrorType.NotFound => NotFound(result.Error),
+                _ => Ok(new { photoUrl = result.Data })
+            };
+        }
+
+        // DELETE: api/users/{id}/photo
+        [HttpDelete("{id:guid}/photo")]
+        [Authorize(Roles = "Owner")]
+        public async Task<IActionResult> DeletePhoto(Guid id)
+        {
+            if (!await _tenant.UserInBusinessAsync(id))
+                return NotFound();
+
+            return await _fotos.QuitarAsync(id) ? NoContent() : NotFound();
         }
 
         // DELETE: api/users/{id} — desactiva (borrado lógico)

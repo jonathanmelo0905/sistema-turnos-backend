@@ -771,6 +771,10 @@ namespace AgendaApp.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
 
+                    b.Property<string>("PhotoUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(50)

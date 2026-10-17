@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 
 namespace AgendaApp.Context
@@ -25,6 +25,10 @@ namespace AgendaApp.Context
 
         [MaxLength(30)]
         public string? Phone { get; set; }
+
+        // URL de la foto (la devuelve IAlmacenArchivos); null = sin foto, se muestran iniciales.
+        [MaxLength(300)]
+        public string? PhotoUrl { get; set; }
 
         // Borrado lógico: un usuario inactivo no puede iniciar sesión ni recibir turnos.
         public bool Active { get; set; } = true;

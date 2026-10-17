@@ -50,6 +50,7 @@ namespace AgendaApp.Dtos
     {
         public Guid UserId { get; set; }
         public string Name { get; set; } = null!;
+        public string? PhotoUrl { get; set; }
         public List<Guid> ServiceIds { get; set; } = new();
     }
 

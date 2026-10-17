@@ -93,6 +93,7 @@ namespace AgendaApp.Services
                 Name = u.Name,
                 Email = u.Email,
                 Phone = u.Phone,
+                PhotoUrl = u.PhotoUrl,
                 BusinessId = business.BusinessId,
                 Role = u.Role,
                 Active = u.Active,

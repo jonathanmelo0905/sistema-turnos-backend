@@ -82,6 +82,10 @@ builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IValleyService, ValleyService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IReminderService, ReminderService>();
+builder.Services.AddScoped<IUserPhotoService, UserPhotoService>();
+// Archivos subidos: disco local por ahora. Al desplegar, registrar aquí la implementación
+// de almacenamiento de objetos (S3/R2/Azure Blob) según "Almacen:Tipo".
+builder.Services.AddSingleton<AgendaApp.Services.Almacen.IAlmacenArchivos, AgendaApp.Services.Almacen.AlmacenLocal>();
 builder.Services.AddHostedService<ReminderJob>();
 
 builder.Services.AddHttpContextAccessor();
@@ -151,6 +155,15 @@ app.UseAppExceptionHandling();
 
 app.UseHttpsRedirection();
 app.UseCors("AppCorsPolicy");
+// Archivos de AlmacenLocal (fotos del personal) en /archivos. Se crea la carpeta para
+// que se sirva aunque aún no se haya subido nada.
+var carpetaArchivos = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "archivos");
+Directory.CreateDirectory(carpetaArchivos);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(carpetaArchivos),
+    RequestPath = "/archivos"
+});
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization(); 

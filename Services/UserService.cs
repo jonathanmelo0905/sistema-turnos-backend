@@ -29,6 +29,7 @@ namespace AgendaApp.Services
                     Name = u.Name,
                     Email = u.Email,
                     Phone = u.Phone,
+                    PhotoUrl = u.PhotoUrl,
                     Role = u.Role,
                     Active = u.Active,
                     CreatedAt = u.CreatedAt
@@ -142,6 +143,7 @@ namespace AgendaApp.Services
             Name = user.Name,
             Email = user.Email,
             Phone = user.Phone,
+            PhotoUrl = user.PhotoUrl,
             Role = user.Role,
             Active = user.Active,
             CreatedAt = user.CreatedAt

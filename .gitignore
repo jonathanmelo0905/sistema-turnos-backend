@@ -19,3 +19,4 @@ Thumbs.db
 
 ## Correos de prueba (EmailService sin Smtp:Host)
 correos-dev/
+wwwroot/archivos/
