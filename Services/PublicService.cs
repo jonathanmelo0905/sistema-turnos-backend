@@ -44,6 +44,7 @@ namespace AgendaApp.Services
                 {
                     Slug = b.Slug!,
                     Name = b.Name,
+                    LogoUrl = b.LogoUrl,
                     Description = b.Description,
                     Address = b.Address,
                     ServiceCount = _context.Services.Count(s => s.BusinessId == b.BusinessId && s.Active)
@@ -134,6 +135,8 @@ namespace AgendaApp.Services
                 BusinessId = b.BusinessId,
                 Slug = b.Slug!,
                 Name = b.Name,
+                LogoUrl = b.LogoUrl,
+                CoverUrl = b.CoverUrl,
                 Description = b.Description,
                 Address = b.Address,
                 Phone = b.Phone,

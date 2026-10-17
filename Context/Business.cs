@@ -42,6 +42,13 @@ namespace AgendaApp.Context
         [MaxLength(200)]
         public string? TikTok { get; set; }
 
+        // Imágenes (URL de IAlmacenArchivos); null = sin imagen, se usa la inicial / el degradado.
+        [MaxLength(300)]
+        public string? LogoUrl { get; set; }
+
+        [MaxLength(300)]
+        public string? CoverUrl { get; set; }
+
         [Required]
         public int PlanId { get; set; } = 1;
 

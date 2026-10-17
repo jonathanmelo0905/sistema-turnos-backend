@@ -194,6 +194,10 @@ namespace AgendaApp.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(2);
 
+                    b.Property<string>("CoverUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -213,6 +217,10 @@ namespace AgendaApp.Migrations
                     b.Property<string>("Instagram")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
 
                     b.Property<string>("Name")
                         .IsRequired()

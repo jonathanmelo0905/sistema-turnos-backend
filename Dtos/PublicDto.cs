@@ -16,6 +16,8 @@ namespace AgendaApp.Dtos
         public string? Instagram { get; set; }
         public string? Facebook { get; set; }
         public string? TikTok { get; set; }
+        public string? LogoUrl { get; set; }
+        public string? CoverUrl { get; set; }
         public int CancelLimitHours { get; set; }
         public List<BusinessScheduleDayDto> Schedule { get; set; } = new();
         public List<PublicCategoryDto> Categories { get; set; } = new();
@@ -60,6 +62,7 @@ namespace AgendaApp.Dtos
         public string Name { get; set; } = null!;
         public string? Description { get; set; }
         public string? Address { get; set; }
+        public string? LogoUrl { get; set; }
         public int ServiceCount { get; set; }
     }
 

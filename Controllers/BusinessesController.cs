@@ -13,12 +13,14 @@ namespace AgendaApp.Controllers
         private readonly IBusinessService _businessService;
         private readonly IBusinessScheduleService _businessScheduleService;
         private readonly ITenantGuard _tenant;
+        private readonly IBusinessImageService _imagenes;
 
-        public BusinessesController(IBusinessService businessService, IBusinessScheduleService businessScheduleService, ITenantGuard tenant)
+        public BusinessesController(IBusinessService businessService, IBusinessScheduleService businessScheduleService, ITenantGuard tenant, IBusinessImageService imagenes)
         {
             _businessService = businessService;
             _businessScheduleService = businessScheduleService;
             _tenant = tenant;
+            _imagenes = imagenes;
         }
 
         [HttpGet("{businessId:guid}")]
@@ -53,6 +55,47 @@ namespace AgendaApp.Controllers
                 ServiceErrorType.Conflict => Conflict(result.Error),
                 _ => Ok(result.Data)
             };
+        }
+
+        // POST: api/businesses/{id}/logo y /cover — multipart "file" (JPG, PNG o WEBP; logo 2 MB, portada 5 MB)
+        [HttpPost("{businessId:guid}/logo")]
+        [Authorize(Policy = "business.edit")]
+        [RequestSizeLimit(BusinessImageService.LogoMaximo + 64 * 1024)]
+        public Task<IActionResult> UploadLogo(Guid businessId, IFormFile file) => SubirImagen(businessId, BusinessImage.Logo, file);
+
+        [HttpPost("{businessId:guid}/cover")]
+        [Authorize(Policy = "business.edit")]
+        [RequestSizeLimit(BusinessImageService.PortadaMaxima + 64 * 1024)]
+        public Task<IActionResult> UploadCover(Guid businessId, IFormFile file) => SubirImagen(businessId, BusinessImage.Cover, file);
+
+        [HttpDelete("{businessId:guid}/logo")]
+        [Authorize(Policy = "business.edit")]
+        public Task<IActionResult> DeleteLogo(Guid businessId) => QuitarImagen(businessId, BusinessImage.Logo);
+
+        [HttpDelete("{businessId:guid}/cover")]
+        [Authorize(Policy = "business.edit")]
+        public Task<IActionResult> DeleteCover(Guid businessId) => QuitarImagen(businessId, BusinessImage.Cover);
+
+        private async Task<IActionResult> SubirImagen(Guid businessId, BusinessImage tipo, IFormFile file)
+        {
+            if (!_tenant.IsOwnBusiness(businessId))
+                return Forbid();
+
+            var result = await _imagenes.SubirAsync(businessId, tipo, file);
+            return result.ErrorType switch
+            {
+                ServiceErrorType.BadRequest => BadRequest(result.Error),
+                ServiceErrorType.NotFound => NotFound(result.Error),
+                _ => Ok(new { url = result.Data })
+            };
+        }
+
+        private async Task<IActionResult> QuitarImagen(Guid businessId, BusinessImage tipo)
+        {
+            if (!_tenant.IsOwnBusiness(businessId))
+                return Forbid();
+
+            return await _imagenes.QuitarAsync(businessId, tipo) ? NoContent() : NotFound();
         }
 
         [HttpGet("{businessId:guid}/schedule")]

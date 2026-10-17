@@ -76,6 +76,8 @@ namespace AgendaApp.Services
             Name = business.Name,
             Email = business.Email,
             Phone = business.Phone,
+            LogoUrl = business.LogoUrl,
+            CoverUrl = business.CoverUrl,
             Address = business.Address,
             Description = business.Description,
             WhatsApp = business.WhatsApp,
