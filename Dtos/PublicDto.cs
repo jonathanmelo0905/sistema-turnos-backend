@@ -19,6 +19,8 @@ namespace AgendaApp.Dtos
         public string? LogoUrl { get; set; }
         public string? CoverUrl { get; set; }
         public int CancelLimitHours { get; set; }
+        public int MaxDaysAhead { get; set; }
+        public int MinAdvanceMinutes { get; set; }
         public List<BusinessScheduleDayDto> Schedule { get; set; } = new();
         public List<PublicCategoryDto> Categories { get; set; } = new();
         public List<PublicServiceDto> Services { get; set; } = new();

@@ -40,5 +40,16 @@ namespace AgendaApp.Dtos
 
         [Range(0, 72)]
         public int CancelLimitHours { get; set; } = 2;
+
+        [Range(0, 1440)]
+        public int MinAdvanceMinutes { get; set; } = 30;
+
+        [Range(0, 120)]
+        public int BufferMinutes { get; set; } = 0;
+
+        [Range(1, 90)]
+        public int MaxDaysAhead { get; set; } = 8;
+
+        public bool ValleyOnReschedule { get; set; }
     }
 }

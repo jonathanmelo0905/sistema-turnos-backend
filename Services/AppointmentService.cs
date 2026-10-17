@@ -216,6 +216,19 @@ namespace AgendaApp.Services
             a.DateTimeEnd = end;
             a.UserId = newUserId;
             a.UpdatedAt = DateTime.UtcNow;
+
+            // Precio en la nueva hora: con ValleyOnReschedule se recotiza con Horas Valle;
+            // si no, se cobra el precio de lista (el descuento valle es solo para reservas nuevas)
+            var lista = a.ListPrice ?? a.Price;
+            if (lista.HasValue)
+            {
+                var pct = business.ValleyOnReschedule && !outOfHours
+                    ? (await _valley.QuoteAsync(businessId, start, (int)duration.TotalMinutes))?.Pct
+                    : null;
+                a.ValleyDiscountPct = pct is > 0 ? pct : null;
+                a.Price = a.ValleyDiscountPct.HasValue ? Math.Round(lista.Value * (100 - a.ValleyDiscountPct.Value) / 100m, 0) : lista;
+                a.ListPrice = lista;
+            }
             // Un turno movido vuelve a quedar por confirmar con el cliente
             a.Status = outOfHours ? AppointmentStatus.PendingOutOfHours : AppointmentStatus.Pending;
 

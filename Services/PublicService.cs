@@ -146,6 +146,8 @@ namespace AgendaApp.Services
                 Facebook = b.Facebook,
                 TikTok = b.TikTok,
                 CancelLimitHours = b.CancelLimitHours,
+                MaxDaysAhead = b.MaxDaysAhead,
+                MinAdvanceMinutes = b.MinAdvanceMinutes,
                 Schedule = schedule,
                 Categories = categories,
                 // Solo servicios que alguien presta
@@ -161,13 +163,16 @@ namespace AgendaApp.Services
 
             var digits = new string(dto.Client.Phone.Where(char.IsDigit).ToArray());
             if (digits.Length < 7) return ServiceResult<PublicBookResultDto>.BadRequest("Escribe un teléfono válido.");
-            if (dto.Start < DateTime.Now.AddMinutes(10)) return ServiceResult<PublicBookResultDto>.BadRequest("Elige una hora con al menos 10 minutos de anticipación.");
+            if (dto.Start < DateTime.Now.AddMinutes(b.MinAdvanceMinutes))
+                return ServiceResult<PublicBookResultDto>.BadRequest($"Esta empresa recibe reservas con al menos {TextoAntelacion(b.MinAdvanceMinutes)} de anticipación. Elige una hora más adelante.");
+            if (dto.Start.Date > DateTime.Today.AddDays(b.MaxDaysAhead - 1))
+                return ServiceResult<PublicBookResultDto>.BadRequest($"Solo se puede reservar hasta {b.MaxDaysAhead} días adelante.");
 
             // "Cualquiera": quien tenga libre esa hora y menos turnos ese día
             var userId = dto.UserId;
             if (userId == null)
             {
-                var opciones = await _availability.GetServiceAvailabilityAsync(b.BusinessId, dto.ServiceId, dto.Start.Date);
+                var opciones = await _availability.GetServiceAvailabilityAsync(b.BusinessId, dto.ServiceId, dto.Start.Date, publico: true);
                 var libres = opciones.Data?.Where(p => p.Starts.Any(s => s == dto.Start)).Select(p => p.UserId).ToList() ?? new();
                 if (libres.Count == 0) return ServiceResult<PublicBookResultDto>.Conflict("Esa hora ya no está disponible. Elige otra.");
 
@@ -339,6 +344,13 @@ namespace AgendaApp.Services
             };
         }
 
+        private static string TextoAntelacion(int min) => min switch
+        {
+            >= 1440 when min % 1440 == 0 => min == 1440 ? "1 día" : $"{min / 1440} días",
+            >= 60 => min == 60 ? "1 hora" : $"{min / 60.0:0.#} horas",
+            _ => $"{min} minutos"
+        };
+
         // "¿Repetir con la misma persona?": último servicio atendido y el próximo hueco libre
         private async Task<PublicSuggestionDto?> SuggestAsync(Guid businessId, Guid clientId)
         {
@@ -351,8 +363,8 @@ namespace AgendaApp.Services
                 .FirstOrDefaultAsync();
             if (ultimo == null) return null;
 
-            var huecos = await _availability.GetAvailableSlotsAsync(ultimo.UserId, ultimo.serviceId, DateTime.Today, DateTime.Today.AddDays(13));
-            var proximo = huecos.Data?.Days.SelectMany(d => d.Starts).Where(s => s > DateTime.Now.AddHours(1)).OrderBy(s => s).FirstOrDefault();
+            var huecos = await _availability.GetAvailableSlotsAsync(ultimo.UserId, ultimo.serviceId, DateTime.Today, DateTime.Today.AddDays(13), publico: true);
+            var proximo = huecos.Data?.Days.SelectMany(d => d.Starts).OrderBy(s => s).FirstOrDefault();
 
             return new PublicSuggestionDto
             {

@@ -62,17 +62,18 @@ namespace AgendaApp.Services
                 return new ResultadoService { Status = false, Mensaje = "El horario solicitado no está disponible (fuera de horario, cruza el almuerzo, o coincide con una excepción).", Reason = AvailabilityReason.OutOfSchedule };
 
             // 4️⃣ Verificar solapamiento con otras citas (excluye canceladas y turnos fuera de
-            // horario rechazados — ninguno de los dos sigue ocupando el horario)
+            // horario rechazados — ninguno de los dos sigue ocupando el horario).
+            // El margen de la empresa se exige antes y después de cada turno.
+            var margen = await _context.Businesses.Where(b => b.BusinessId == user.BusinessId)
+                .Select(b => b.BufferMinutes).FirstAsync();
+            var ocupadoIni = start.AddMinutes(-margen);
+            var ocupadoFin = end.AddMinutes(margen);
             var overlapping = await _context.Appointments.AnyAsync(a =>
                 a.UserId == userId &&
                 a.AppointmentId != excludeAppointmentId &&
                 a.Status != "Cancelled" &&
                 a.Status != "RejectedOutOfHours" &&
-                (
-                    (start >= a.DateTimeStart && start < a.DateTimeEnd) ||
-                    (end > a.DateTimeStart && end <= a.DateTimeEnd) ||
-                    (start <= a.DateTimeStart && end >= a.DateTimeEnd)
-                )
+                a.DateTimeStart < ocupadoFin && a.DateTimeEnd > ocupadoIni
             );
 
             if (overlapping)
@@ -90,7 +91,8 @@ namespace AgendaApp.Services
         /// Si se indica serviceId, filtra los huecos por la duración de ese servicio (caso cliente agendando).
         /// Si no se indica, devuelve los huecos crudos sin filtrar por duración (caso colaborador viendo su agenda).
         /// </summary>
-        public async Task<ServiceResult<AvailabilityResponseDto>> GetAvailableSlotsAsync(Guid userId, Guid? serviceId, DateTime startDate, DateTime endDate)
+        /// <param name="publico">Reserva sin sesión: aplica la antelación mínima y los días hacia adelante de la empresa.</param>
+        public async Task<ServiceResult<AvailabilityResponseDto>> GetAvailableSlotsAsync(Guid userId, Guid? serviceId, DateTime startDate, DateTime endDate, bool publico = false)
         {
             startDate = startDate.Date;
             endDate = endDate.Date;
@@ -122,6 +124,13 @@ namespace AgendaApp.Services
                 durationMin = service.DurationMin;
             }
 
+            var politica = await _context.Businesses.AsNoTracking().Where(b => b.BusinessId == user.BusinessId)
+                .Select(b => new { b.MinAdvanceMinutes, b.BufferMinutes, b.MaxDaysAhead }).FirstAsync();
+            var margen = TimeSpan.FromMinutes(politica.BufferMinutes);
+            // Primer inicio que puede tomar el cliente y último día que puede reservar
+            var desde = publico ? DateTime.Now.AddMinutes(politica.MinAdvanceMinutes) : DateTime.Now;
+            var ultimoDia = publico ? DateTime.Today.AddDays(politica.MaxDaysAhead - 1) : DateTime.MaxValue;
+
             // Horas Valle de la empresa (en caché); solo importan cuando se consulta con servicio
             var valle = durationMin.HasValue ? await _valley.GetStateAsync(user.BusinessId) : null;
 
@@ -143,14 +152,19 @@ namespace AgendaApp.Services
                         && a.DateTimeStart < date.AddDays(1) && a.DateTimeEnd > date)
                     .ToListAsync();
 
+                // Cada turno ocupa también el margen antes y después
                 foreach (var appt in appointments)
-                    dayIntervals = SubtractInterval(dayIntervals, appt.DateTimeStart.TimeOfDay, appt.DateTimeEnd.TimeOfDay);
+                {
+                    var ini = appt.DateTimeStart.TimeOfDay - margen;
+                    dayIntervals = SubtractInterval(dayIntervals, ini < TimeSpan.Zero ? TimeSpan.Zero : ini, appt.DateTimeEnd.TimeOfDay + margen);
+                }
 
-                // Lo que ya pasó hoy no se ofrece
-                if (date == DateTime.Today)
-                    dayIntervals = SubtractInterval(dayIntervals, TimeSpan.Zero, RoundUp(DateTime.Now.TimeOfDay));
-                else if (date < DateTime.Today)
+                // Lo que ya pasó (o no cumple la antelación mínima) no se ofrece; tampoco los días
+                // más allá del límite de la empresa
+                if (date < desde.Date || date > ultimoDia)
                     dayIntervals.Clear();
+                else if (date == desde.Date)
+                    dayIntervals = SubtractInterval(dayIntervals, TimeSpan.Zero, RoundUp(desde.TimeOfDay));
 
                 // Filtrar por duración del servicio (si aplica)
                 if (durationMin.HasValue)
@@ -186,7 +200,7 @@ namespace AgendaApp.Services
         /// <summary>
         /// Para reservar: quién presta el servicio y a qué horas puede empezar ese día.
         /// </summary>
-        public async Task<ServiceResult<List<StaffAvailabilityDto>>> GetServiceAvailabilityAsync(Guid businessId, Guid serviceId, DateTime date)
+        public async Task<ServiceResult<List<StaffAvailabilityDto>>> GetServiceAvailabilityAsync(Guid businessId, Guid serviceId, DateTime date, bool publico = false)
         {
             var service = await _context.Services.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ServiceId == serviceId && s.BusinessId == businessId && s.Active);
@@ -202,7 +216,7 @@ namespace AgendaApp.Services
             var result = new List<StaffAvailabilityDto>();
             foreach (var u in staff)
             {
-                var day = await GetAvailableSlotsAsync(u.UserId, serviceId, date.Date, date.Date);
+                var day = await GetAvailableSlotsAsync(u.UserId, serviceId, date.Date, date.Date, publico);
                 var d = day.Data?.Days.FirstOrDefault();
                 result.Add(new StaffAvailabilityDto
                 {

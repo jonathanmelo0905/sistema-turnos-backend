@@ -17,6 +17,10 @@ namespace AgendaApp.Dtos
         public bool AllowOutOfHoursBooking { get; set; }
         public string? Slug { get; set; }
         public int CancelLimitHours { get; set; }
+        public int MinAdvanceMinutes { get; set; }
+        public int BufferMinutes { get; set; }
+        public int MaxDaysAhead { get; set; }
+        public bool ValleyOnReschedule { get; set; }
         public int PlanId { get; set; }
         public DateTime CreatedAt { get; set; }
 

@@ -53,6 +53,10 @@ namespace AgendaApp.Services
             business.TikTok = Clean(dto.TikTok);
             business.AllowOutOfHoursBooking = dto.AllowOutOfHoursBooking;
             business.CancelLimitHours = dto.CancelLimitHours;
+            business.MinAdvanceMinutes = dto.MinAdvanceMinutes;
+            business.BufferMinutes = dto.BufferMinutes;
+            business.MaxDaysAhead = dto.MaxDaysAhead;
+            business.ValleyOnReschedule = dto.ValleyOnReschedule;
 
             if (!string.IsNullOrWhiteSpace(dto.Slug))
             {
@@ -87,6 +91,10 @@ namespace AgendaApp.Services
             AllowOutOfHoursBooking = business.AllowOutOfHoursBooking,
             Slug = business.Slug,
             CancelLimitHours = business.CancelLimitHours,
+            MinAdvanceMinutes = business.MinAdvanceMinutes,
+            BufferMinutes = business.BufferMinutes,
+            MaxDaysAhead = business.MaxDaysAhead,
+            ValleyOnReschedule = business.ValleyOnReschedule,
             PlanId = business.PlanId,
             CreatedAt = business.CreatedAt,
             Users = business.Users.Select(u => new UserResponseDto

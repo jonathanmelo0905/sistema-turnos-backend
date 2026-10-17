@@ -29,7 +29,9 @@ namespace AgendaApp.Controllers
             [FromQuery] DateTime startDate,
             [FromQuery] DateTime endDate)
         {
-            var result = await _availabilityService.GetAvailableSlotsAsync(userId, serviceId, startDate, endDate);
+            // Sin sesión = cliente: se aplican antelación mínima y días hacia adelante
+            var publico = User.Identity?.IsAuthenticated != true;
+            var result = await _availabilityService.GetAvailableSlotsAsync(userId, serviceId, startDate, endDate, publico);
 
             return result.ErrorType switch
             {
@@ -47,7 +49,8 @@ namespace AgendaApp.Controllers
         public async Task<ActionResult<List<StaffAvailabilityDto>>> GetServiceAvailability(
             [FromQuery] Guid businessId, [FromQuery] Guid serviceId, [FromQuery] DateTime date)
         {
-            var result = await _availabilityService.GetServiceAvailabilityAsync(businessId, serviceId, date);
+            var publico = User.Identity?.IsAuthenticated != true;
+            var result = await _availabilityService.GetServiceAvailabilityAsync(businessId, serviceId, date, publico);
             return result.ErrorType == ServiceErrorType.NotFound ? NotFound(result.Error) : Ok(result.Data);
         }
     }

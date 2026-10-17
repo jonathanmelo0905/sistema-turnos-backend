@@ -189,6 +189,9 @@ namespace AgendaApp.Migrations
                     b.Property<bool>("AllowOutOfHoursBooking")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<int>("BufferMinutes")
+                        .HasColumnType("int");
+
                     b.Property<int>("CancelLimitHours")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
@@ -222,6 +225,12 @@ namespace AgendaApp.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
 
+                    b.Property<int>("MaxDaysAhead")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinAdvanceMinutes")
+                        .HasColumnType("int");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -241,6 +250,9 @@ namespace AgendaApp.Migrations
                     b.Property<string>("TikTok")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<bool>("ValleyOnReschedule")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("WhatsApp")
                         .HasMaxLength(30)

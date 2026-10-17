@@ -29,6 +29,17 @@ namespace AgendaApp.Context
         // Horas mínimas de anticipación para que el cliente cancele en línea
         public int CancelLimitHours { get; set; } = 2;
 
+        // Políticas de reserva (Fase 8). Antelación y días adelante solo limitan la reserva pública;
+        // el margen entre turnos aplica siempre (panel y web).
+        public int MinAdvanceMinutes { get; set; } = 30;
+
+        public int BufferMinutes { get; set; } = 0;
+
+        public int MaxDaysAhead { get; set; } = 8;
+
+        // Al reprogramar: true = se recotiza con Horas Valle; false = precio de lista
+        public bool ValleyOnReschedule { get; set; } = false;
+
         // Redes y contacto público (se muestran en la página de reservas del cliente)
         [MaxLength(30)]
         public string? WhatsApp { get; set; }
