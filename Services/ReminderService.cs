@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Net;
 using AgendaApp.Context;
 using AgendaApp.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -24,22 +22,19 @@ namespace AgendaApp.Services
     public class ReminderService : IReminderService
     {
         private static readonly string[] Activos = { AppointmentStatus.Pending, AppointmentStatus.Confirmed };
-        private static readonly CultureInfo Es = new("es-CO");
 
         private readonly AgendaProDbContext _context;
         private readonly INotificationService _notifications;
         private readonly IAppointmentService _appointments;
-        private readonly IEmailService _email;
-        private readonly IConfiguration _config;
+        private readonly ICorreoCitasService _correos;
 
         public ReminderService(AgendaProDbContext context, INotificationService notifications,
-            IAppointmentService appointments, IEmailService email, IConfiguration config)
+            IAppointmentService appointments, ICorreoCitasService correos)
         {
             _context = context;
             _notifications = notifications;
             _appointments = appointments;
-            _email = email;
-            _config = config;
+            _correos = correos;
         }
 
         public async Task<int> GenerarAsync(CancellationToken ct = default)
@@ -83,7 +78,8 @@ namespace AgendaApp.Services
             {
                 if (string.IsNullOrWhiteSpace(a.Client.Email))
                     return ServiceResult<AppointmentDto>.BadRequest("El cliente no tiene correo registrado.");
-                await _email.SendAsync(a.Client.Email, $"Recordatorio: tu turno en {a.Business.Name}", CorreoHtml(a), a.Business.Name);
+                if (!await _correos.EnviarAsync(a.AppointmentId, TipoCorreoCita.Recordatorio))
+                    return ServiceResult<AppointmentDto>.BadRequest("No se pudo enviar el correo. Inténtalo de nuevo o avísale por WhatsApp.");
             }
 
             a.ReminderSentAt = DateTime.UtcNow;
@@ -107,27 +103,6 @@ namespace AgendaApp.Services
 
             await _context.SaveChangesAsync();
             return ServiceResult<AppointmentDto>.Ok((await _appointments.GetDetailAsync(businessId, id))!);
-        }
-
-        private string CorreoHtml(Appointment a)
-        {
-            static string H(string? s) => WebUtility.HtmlEncode(s ?? "");
-            var cuando = a.DateTimeStart.ToString("dddd d 'de' MMMM 'a las' h:mm tt", Es);
-            var nombre = (a.Client.Name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-            var con = (a.User.Name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            var baseUrl = (_config["App:ClienteUrl"] ?? "http://localhost:4400").TrimEnd('/');
-            var enlace = string.IsNullOrWhiteSpace(a.Business.Slug) ? null : $"{baseUrl}/{a.Business.Slug}/mis-turnos";
-
-            return $"""
-                <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:auto;color:#1f2937">
-                  <h2 style="color:#4f46e5;margin:0 0 12px">Te recordamos tu turno</h2>
-                  <p>Hola {H(nombre)},</p>
-                  <p>Tienes un turno de <b>{H(a.Service.Name)}</b>{(con != null ? $" con <b>{H(con)}</b>" : "")} el <b>{H(cuando)}</b>.</p>
-                  {(string.IsNullOrWhiteSpace(a.Business.Address) ? "" : $"<p>Te esperamos en {H(a.Business.Address)}.</p>")}
-                  {(enlace == null ? "" : $"""<p><a href="{H(enlace)}" style="display:inline-block;background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Ver o cancelar mi turno</a></p>""")}
-                  <p style="color:#6b7280;font-size:13px">Si no puedes asistir, avísanos con tiempo. ¡Gracias!<br>{H(a.Business.Name)}</p>
-                </div>
-                """;
         }
     }
 

@@ -5,7 +5,7 @@ namespace AgendaApp.Services
 {
     public interface IEmailService
     {
-        Task SendAsync(string to, string subject, string html, string? fromName = null);
+        Task SendAsync(string to, string subject, string html, string? fromName = null, string? replyTo = null);
     }
 
     // Correo por SMTP (sección "Smtp" de la configuración; la contraseña en user-secrets).
@@ -21,7 +21,7 @@ namespace AgendaApp.Services
             _env = env;
         }
 
-        public async Task SendAsync(string to, string subject, string html, string? fromName = null)
+        public async Task SendAsync(string to, string subject, string html, string? fromName = null, string? replyTo = null)
         {
             var smtp = _config.GetSection("Smtp");
             var from = smtp["From"] ?? "no-responder@turnos.local";
@@ -34,6 +34,8 @@ namespace AgendaApp.Services
                 IsBodyHtml = true
             };
             msg.To.Add(to);
+            // Las respuestas del cliente le llegan a la empresa, no al remitente del sistema
+            if (!string.IsNullOrWhiteSpace(replyTo)) msg.ReplyToList.Add(replyTo);
 
             using var client = new SmtpClient();
             if (string.IsNullOrWhiteSpace(smtp["Host"]))

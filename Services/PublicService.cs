@@ -25,8 +25,9 @@ namespace AgendaApp.Services
         private readonly ILogger<PublicService> _logger;
         private readonly INotificationService _notify;
         private readonly IValleyService _valley;
+        private readonly ICorreoCitasService _correos;
 
-        public PublicService(AgendaProDbContext context, IAppointmentService appointments, AvailabilityService availability, ILogger<PublicService> logger, INotificationService notify, IValleyService valley)
+        public PublicService(AgendaProDbContext context, IAppointmentService appointments, AvailabilityService availability, ILogger<PublicService> logger, INotificationService notify, IValleyService valley, ICorreoCitasService correos)
         {
             _context = context;
             _appointments = appointments;
@@ -34,6 +35,7 @@ namespace AgendaApp.Services
             _logger = logger;
             _notify = notify;
             _valley = valley;
+            _correos = correos;
         }
 
         public async Task<List<PublicBusinessListItemDto>> ListBusinessesAsync() =>
@@ -221,6 +223,7 @@ namespace AgendaApp.Services
             _logger.LogInformation("Reserva web {Id} en {Slug} para cliente {ClientId}.", result.Data!.AppointmentId, slug, client.ClientId);
 
             var id = result.Data.AppointmentId;
+            await _correos.EnviarAsync(id, TipoCorreoCita.Confirmacion);
             var a = (await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == id)).First();
             return ServiceResult<PublicBookResultDto>.Ok(new PublicBookResultDto { Appointment = a, AccessToken = client.AccessToken, ClientName = client.Name ?? "" });
         }

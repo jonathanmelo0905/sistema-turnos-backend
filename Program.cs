@@ -81,6 +81,7 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IValleyService, ValleyService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<ICorreoCitasService, CorreoCitasService>();
 builder.Services.AddScoped<IReminderService, ReminderService>();
 builder.Services.AddScoped<IUserPhotoService, UserPhotoService>();
 builder.Services.AddScoped<IBusinessImageService, BusinessImageService>();

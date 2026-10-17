@@ -13,14 +13,16 @@ namespace AgendaApp.Services
         private readonly ILogger<AppointmentService> _logger;
         private readonly INotificationService _notify;
         private readonly IValleyService _valley;
+        private readonly ICorreoCitasService _correos;
 
-        public AppointmentService(AgendaProDbContext context, AvailabilityService availabilityService, ILogger<AppointmentService> logger, INotificationService notify, IValleyService valley)
+        public AppointmentService(AgendaProDbContext context, AvailabilityService availabilityService, ILogger<AppointmentService> logger, INotificationService notify, IValleyService valley, ICorreoCitasService correos)
         {
             _context = context;
             _availabilityService = availabilityService;
             _logger = logger;
             _notify = notify;
             _valley = valley;
+            _correos = correos;
         }
 
         // ---------------------------------------------------------------- Consultas
@@ -155,6 +157,8 @@ namespace AgendaApp.Services
             await tx.CommitAsync();
 
             _logger.LogInformation("Turno {Id} reservado ({Source}) para {UserId} a las {Start}.", appointment.AppointmentId, source, dto.UserId, start);
+            // La reserva web la confirma PublicService, después de completar el correo del cliente
+            if (source != "Web") await _correos.EnviarAsync(appointment.AppointmentId, TipoCorreoCita.Confirmacion);
             return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(businessId, appointment.AppointmentId))!);
         }
 
@@ -254,6 +258,8 @@ namespace AgendaApp.Services
             await tx.CommitAsync();
 
             _logger.LogInformation("Turno {Id} {Accion} por {By}.", id, cambio, byUserId);
+            await _correos.EnviarAsync(id, TipoCorreoCita.Reprogramacion,
+                $"Antes era el {oldStart.ToString("dddd d 'de' MMMM 'a las' h:mm tt", new System.Globalization.CultureInfo("es-CO"))}.");
             return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(businessId, id))!);
         }
 
@@ -310,6 +316,8 @@ namespace AgendaApp.Services
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Turno {Id}: {From} → {To} por {By}.", id, from, to, byUserId);
+            if (to == AppointmentStatus.Cancelled)
+                await _correos.EnviarAsync(id, TipoCorreoCita.Cancelacion, porCliente ? null : $"Motivo: {dto.Note!.Trim()}");
             return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(businessId, id))!);
         }
 
