@@ -147,6 +147,10 @@ namespace AgendaApp.Services
                 TikTok = b.TikTok,
                 CancelLimitHours = b.CancelLimitHours,
                 MaxDaysAhead = b.MaxDaysAhead,
+                ClosedHolidays = b.ClosedOnHolidays
+                    ? FestivosColombia.Entre(DateTime.Today, DateTime.Today.AddDays(b.MaxDaysAhead - 1))
+                        .Select(f => new HolidayDto { Date = f.Fecha, Name = f.Nombre }).ToList()
+                    : new List<HolidayDto>(),
                 MinAdvanceMinutes = b.MinAdvanceMinutes,
                 Schedule = schedule,
                 Categories = categories,

@@ -247,6 +247,10 @@ namespace AgendaApp.Services
             if (businessSchedule == null || !businessSchedule.IsOpen)
                 return new List<(TimeSpan, TimeSpan)>();
 
+            if (FestivosColombia.De(date) != null
+                && await _context.Businesses.AnyAsync(b => b.BusinessId == businessId && b.ClosedOnHolidays))
+                return new List<(TimeSpan, TimeSpan)>();
+
             if (!TimeSpan.TryParse(businessSchedule.OpenTime, out var businessOpen) ||
                 !TimeSpan.TryParse(businessSchedule.CloseTime, out var businessClose) ||
                 businessOpen >= businessClose)

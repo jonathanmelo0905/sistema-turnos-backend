@@ -18,11 +18,21 @@ namespace AgendaApp.Dtos
     {
         [Required, MinLength(7), MaxLength(7)]
         public List<BusinessScheduleDayDto> Days { get; set; } = new();
+
+        // null = se conserva el valor actual
+        public bool? ClosedOnHolidays { get; set; }
     }
 
     public class BusinessScheduleResponseDto
     {
         public Guid BusinessId { get; set; }
         public List<BusinessScheduleDayDto> Days { get; set; } = new();
+        public bool ClosedOnHolidays { get; set; }
+    }
+
+    public class HolidayDto
+    {
+        public DateTime Date { get; set; }
+        public string Name { get; set; } = null!;
     }
 }

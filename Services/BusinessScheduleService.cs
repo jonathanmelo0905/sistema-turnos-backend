@@ -36,7 +36,8 @@ namespace AgendaApp.Services
             return ServiceResult<BusinessScheduleResponseDto>.Ok(new BusinessScheduleResponseDto
             {
                 BusinessId = businessId,
-                Days = days
+                Days = days,
+                ClosedOnHolidays = await _context.Businesses.Where(b => b.BusinessId == businessId).Select(b => b.ClosedOnHolidays).FirstAsync()
             });
         }
 
@@ -73,6 +74,10 @@ namespace AgendaApp.Services
             }).ToList();
 
             _context.BusinessSchedules.AddRange(newSchedule);
+
+            var business = await _context.Businesses.FirstAsync(b => b.BusinessId == businessId);
+            if (dto.ClosedOnHolidays.HasValue) business.ClosedOnHolidays = dto.ClosedOnHolidays.Value;
+
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Horario semanal del negocio {BusinessId} actualizado.", businessId);

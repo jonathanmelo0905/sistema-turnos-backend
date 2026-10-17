@@ -98,6 +98,19 @@ namespace AgendaApp.Controllers
             return await _imagenes.QuitarAsync(businessId, tipo) ? NoContent() : NotFound();
         }
 
+        // GET: api/businesses/{id}/holidays?from=yyyy-MM-dd&days=365 — festivos de Colombia del periodo
+        [HttpGet("{businessId:guid}/holidays")]
+        [Authorize]
+        public ActionResult<List<HolidayDto>> GetHolidays(Guid businessId, [FromQuery] DateTime? from, [FromQuery] int days = 365)
+        {
+            if (!_tenant.IsOwnBusiness(businessId))
+                return Forbid();
+
+            var desde = (from ?? DateTime.Today).Date;
+            return Ok(FestivosColombia.Entre(desde, desde.AddDays(Math.Clamp(days, 1, 730)))
+                .Select(f => new HolidayDto { Date = f.Fecha, Name = f.Nombre }).ToList());
+        }
+
         [HttpGet("{businessId:guid}/schedule")]
         [Authorize]
         public async Task<ActionResult<BusinessScheduleResponseDto>> GetSchedule(Guid businessId)

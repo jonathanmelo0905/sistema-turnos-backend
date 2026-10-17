@@ -197,6 +197,9 @@ namespace AgendaApp.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(2);
 
+                    b.Property<bool>("ClosedOnHolidays")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("CoverUrl")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");

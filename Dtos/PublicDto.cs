@@ -20,6 +20,8 @@ namespace AgendaApp.Dtos
         public string? CoverUrl { get; set; }
         public int CancelLimitHours { get; set; }
         public int MaxDaysAhead { get; set; }
+        // Festivos en que la empresa no atiende (solo dentro de MaxDaysAhead)
+        public List<HolidayDto> ClosedHolidays { get; set; } = new();
         public int MinAdvanceMinutes { get; set; }
         public List<BusinessScheduleDayDto> Schedule { get; set; } = new();
         public List<PublicCategoryDto> Categories { get; set; } = new();

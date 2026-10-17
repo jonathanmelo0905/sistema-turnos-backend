@@ -40,6 +40,9 @@ namespace AgendaApp.Context
         // Al reprogramar: true = se recotiza con Horas Valle; false = precio de lista
         public bool ValleyOnReschedule { get; set; } = false;
 
+        // true = la empresa no atiende los festivos de Colombia (FestivosColombia)
+        public bool ClosedOnHolidays { get; set; } = false;
+
         // Redes y contacto público (se muestran en la página de reservas del cliente)
         [MaxLength(30)]
         public string? WhatsApp { get; set; }
