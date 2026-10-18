@@ -119,6 +119,7 @@ namespace AgendaApp.Context
 
             modelBuilder.Entity<Business>().HasIndex(b => b.Slug).IsUnique().HasDatabaseName("IX_Businesses_Slug");
             modelBuilder.Entity<Business>().Property(b => b.CancelLimitHours).HasDefaultValue(2);
+            modelBuilder.Entity<Business>().Property(b => b.Status).HasDefaultValue(BusinessStatus.Approved);
             modelBuilder.Entity<Client>().HasIndex(c => c.AccessToken).HasDatabaseName("IX_Clients_AccessToken");
 
             foreach (var prop in new[] { "ReviewId", "BusinessId", "AppointmentId", "ClientId", "UserId", "ServiceId", "RepliedByUserId" })

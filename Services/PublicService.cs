@@ -45,7 +45,7 @@ namespace AgendaApp.Services
 
         public async Task<List<PublicBusinessListItemDto>> ListBusinessesAsync() =>
             await _context.Businesses.AsNoTracking()
-                .Where(b => b.Slug != null)
+                .Where(b => b.Slug != null && b.Status == BusinessStatus.Approved)
                 .OrderBy(b => b.Name)
                 .Select(b => new PublicBusinessListItemDto
                 {
@@ -505,7 +505,7 @@ namespace AgendaApp.Services
         // ---------------------------------------------------------------- Auxiliares
 
         private Task<Business?> FindBusinessAsync(string slug) =>
-            _context.Businesses.AsNoTracking().FirstOrDefaultAsync(b => b.Slug == slug.ToLower());
+            _context.Businesses.AsNoTracking().FirstOrDefaultAsync(b => b.Slug == slug.ToLower() && b.Status == BusinessStatus.Approved);
 
         private async Task<PublicMyAppointmentsDto> BuildMyAsync(Business b, Client client)
         {

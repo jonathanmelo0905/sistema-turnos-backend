@@ -250,6 +250,16 @@ namespace AgendaApp.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("varchar(80)");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("Approved");
+
+                    b.Property<DateTime?>("TermsAcceptedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("TikTok")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");

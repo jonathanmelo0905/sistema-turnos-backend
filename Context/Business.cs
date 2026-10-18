@@ -63,6 +63,13 @@ namespace AgendaApp.Context
         [MaxLength(300)]
         public string? CoverUrl { get; set; }
 
+        // Pending / Approved / Rejected (BusinessStatus). Solo las aprobadas entran al panel y salen en la web pública
+        [Required, MaxLength(20)]
+        public string Status { get; set; } = BusinessStatus.Approved;
+
+        // Aceptación de los términos al registrarse desde /registro
+        public DateTime? TermsAcceptedAt { get; set; }
+
         [Required]
         public int PlanId { get; set; } = 1;
 

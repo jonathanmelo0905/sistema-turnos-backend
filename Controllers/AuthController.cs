@@ -2,6 +2,8 @@ using AgendaApp.Dtos;
 using AgendaApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using AgendaApp.Middleware;
 
 namespace AgendaApp.Controllers
 {
@@ -16,18 +18,23 @@ namespace AgendaApp.Controllers
             _authService = authService;
         }
 
+        // Registro público de una empresa: queda pendiente de aprobación por el operador
         [HttpPost("register-business")]
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
         public async Task<IActionResult> RegisterBusiness([FromBody] RegisterBusinessDto dto)
         {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
             var result = await _authService.RegisterBusinessAsync(dto);
 
             if (result.ErrorType == ServiceErrorType.BadRequest)
                 return BadRequest(result.Error);
+            if (result.ErrorType == ServiceErrorType.Conflict)
+                return Conflict(result.Error);
 
             return Ok(new
             {
-                message = "Negocio y usuario administrador creados exitosamente",
+                message = "Recibimos tu solicitud. Te avisaremos por correo cuando la empresa esté aprobada.",
                 businessId = result.Data!.BusinessId,
                 userId = result.Data.UserId
             });
