@@ -145,6 +145,22 @@ namespace AgendaApp.Dtos
         public string Code { get; set; } = null!;      // código de cualquiera de sus reservas
     }
 
+    // Acceso con código por correo
+    public class PublicAccessRequestDto
+    {
+        [Required, EmailAddress, MaxLength(150)]
+        public string Email { get; set; } = null!;
+    }
+
+    public class PublicAccessVerifyDto
+    {
+        [Required, EmailAddress, MaxLength(150)]
+        public string Email { get; set; } = null!;
+
+        [Required, MinLength(6), MaxLength(6)]
+        public string Code { get; set; } = null!;
+    }
+
     public class PublicSuggestionDto
     {
         public Guid ServiceId { get; set; }

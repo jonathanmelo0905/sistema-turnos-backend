@@ -17,6 +17,12 @@ namespace AgendaApp.Context
 
         public DateTime? CreatedAt { get; set; }
 
+        // Código de acceso por correo: solo el hash; vence a los 10 min y admite 5 intentos
+        [System.ComponentModel.DataAnnotations.MaxLength(64)]
+        public string? AccessCodeHash { get; set; }
+        public DateTime? AccessCodeExpiresAt { get; set; }
+        public int AccessCodeAttempts { get; set; }
+
         // Última vez que aceptó términos y privacidad al reservar por la web
         public DateTime? TermsAcceptedAt { get; set; }
 

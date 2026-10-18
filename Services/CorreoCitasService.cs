@@ -12,6 +12,9 @@ namespace AgendaApp.Services
         // Envía al cliente el correo del turno con la plantilla común. Nunca lanza: si falla
         // (o el cliente no tiene correo) devuelve false y queda en el log.
         Task<bool> EnviarAsync(Guid appointmentId, TipoCorreoCita tipo, string? detalle = null);
+
+        // Código de acceso a "Mis turnos" con la misma cabecera. Nunca lanza.
+        Task<bool> EnviarCodigoAccesoAsync(Business b, Client client, string codigo, int minutos);
     }
 
     // Correos al cliente: remitente del sistema con el nombre de la empresa y Reply-To al correo de la empresa
@@ -54,6 +57,53 @@ namespace AgendaApp.Services
             }
         }
 
+        public async Task<bool> EnviarCodigoAccesoAsync(Business b, Client client, string codigo, int minutos)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(client.Email)) return false;
+                static string H(string? s) => WebUtility.HtmlEncode(s ?? "");
+                var nombre = (client.Name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+                var html = $"""
+                    <div style="background:#f3f4f6;padding:24px 12px;font-family:Segoe UI,Arial,sans-serif;color:#1f2937">
+                      <div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb">
+                        {Cabecera(b)}
+                        <div style="padding:24px">
+                          <h2 style="margin:0 0 12px;color:#4f46e5;font-size:20px">Tu código para entrar</h2>
+                          <p style="margin:0 0 8px">Hola {H(nombre)},</p>
+                          <p style="margin:0 0 16px">Usa este código para ver y gestionar tus turnos en {H(b.Name)}. Vence en {minutos} minutos.</p>
+                          <p style="margin:0 0 16px;text-align:center;font-size:32px;font-weight:700;letter-spacing:8px;color:#312e81">{codigo}</p>
+                          <p style="margin:0;color:#6b7280;font-size:13px">Si no pediste este código, ignora este correo: nadie puede entrar sin él.</p>
+                        </div>
+                      </div>
+                    </div>
+                    """;
+                await _email.SendAsync(client.Email, $"{codigo} es tu código de {b.Name}", html, b.Name, b.Email);
+                _logger.LogInformation("Código de acceso enviado al cliente {Id}.", client.ClientId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No se pudo enviar el código de acceso al cliente {Id}.", client.ClientId);
+                return false;
+            }
+        }
+
+        // Franja superior con el logo y el nombre de la empresa
+        private string Cabecera(Business b)
+        {
+            static string H(string? s) => WebUtility.HtmlEncode(s ?? "");
+            var apiUrl = (_config["App:ApiUrl"] ?? "https://localhost:7122").TrimEnd('/');
+            var logo = string.IsNullOrWhiteSpace(b.LogoUrl) ? null
+                : b.LogoUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? b.LogoUrl : apiUrl + b.LogoUrl;
+            return $"""
+                <div style="background:#4f46e5;padding:18px 24px;color:#fff">
+                  {(logo == null ? "" : $"""<img src="{H(logo)}" alt="" width="44" height="44" style="border-radius:8px;vertical-align:middle;margin-right:10px;background:#fff">""")}
+                  <span style="font-size:18px;font-weight:600;vertical-align:middle">{H(b.Name)}</span>
+                </div>
+                """;
+        }
+
         private static (string Asunto, string Titulo, string Texto) Textos(TipoCorreoCita tipo, Appointment a)
         {
             var empresa = a.Business.Name;
@@ -81,10 +131,7 @@ namespace AgendaApp.Services
             var hora = a.DateTimeStart.ToString("h:mm tt", Es);
 
             var clienteUrl = (_config["App:ClienteUrl"] ?? "http://localhost:4400").TrimEnd('/');
-            var apiUrl = (_config["App:ApiUrl"] ?? "https://localhost:7122").TrimEnd('/');
             var enlace = string.IsNullOrWhiteSpace(b.Slug) ? null : $"{clienteUrl}/{b.Slug}/mis-turnos";
-            var logo = string.IsNullOrWhiteSpace(b.LogoUrl) ? null
-                : b.LogoUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? b.LogoUrl : apiUrl + b.LogoUrl;
 
             string Fila(string etiqueta, string? valor) => string.IsNullOrWhiteSpace(valor) ? "" :
                 $"""<tr><td style="padding:6px 0;color:#6b7280;width:110px">{etiqueta}</td><td style="padding:6px 0;font-weight:600">{H(valor)}</td></tr>""";
@@ -95,10 +142,7 @@ namespace AgendaApp.Services
             return $"""
                 <div style="background:#f3f4f6;padding:24px 12px;font-family:Segoe UI,Arial,sans-serif;color:#1f2937">
                   <div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb">
-                    <div style="background:#4f46e5;padding:18px 24px;color:#fff">
-                      {(logo == null ? "" : $"""<img src="{H(logo)}" alt="" width="44" height="44" style="border-radius:8px;vertical-align:middle;margin-right:10px;background:#fff">""")}
-                      <span style="font-size:18px;font-weight:600;vertical-align:middle">{H(b.Name)}</span>
-                    </div>
+                    {Cabecera(b)}
                     <div style="padding:24px">
                       <h2 style="margin:0 0 12px;color:#4f46e5;font-size:20px">{H(titulo)}</h2>
                       <p style="margin:0 0 8px">Hola {H(nombre)},</p>

@@ -340,6 +340,16 @@ namespace AgendaApp.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<int>("AccessCodeAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("AccessCodeExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("AccessCodeHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<string>("AccessToken")
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");

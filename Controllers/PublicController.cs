@@ -59,6 +59,25 @@ namespace AgendaApp.Controllers
             return Map(await _public.LookupAsync(slug, dto));
         }
 
+        // Pide un código de acceso por correo. Siempre 200: no revela si el correo es de un cliente
+        [HttpPost("businesses/{slug}/access/request")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<IActionResult> AccessRequest(string slug, [FromBody] PublicAccessRequestDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            await _public.RequestAccessCodeAsync(slug, dto.Email);
+            return Ok(new { message = "Si ese correo tiene turnos aquí, te enviamos un código." });
+        }
+
+        // Verifica el código y devuelve mis turnos con el AccessToken del cliente
+        [HttpPost("businesses/{slug}/access/verify")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<ActionResult<PublicMyAppointmentsDto>> AccessVerify(string slug, [FromBody] PublicAccessVerifyDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            return Map(await _public.VerifyAccessCodeAsync(slug, dto));
+        }
+
         [HttpPost("businesses/{slug}/appointments/{id:guid}/cancel")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
         public async Task<ActionResult<PublicAppointmentDto>> Cancel(string slug, Guid id, [FromBody] PublicCancelDto dto)

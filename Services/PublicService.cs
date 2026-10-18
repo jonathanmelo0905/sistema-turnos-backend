@@ -13,6 +13,8 @@ namespace AgendaApp.Services
         Task<ServiceResult<PublicBookResultDto>> BookAsync(string slug, PublicBookDto dto);
         Task<ServiceResult<PublicMyAppointmentsDto>> MyAppointmentsAsync(string slug, string accessToken);
         Task<ServiceResult<PublicMyAppointmentsDto>> LookupAsync(string slug, PublicLookupDto dto);
+        Task RequestAccessCodeAsync(string slug, string email);
+        Task<ServiceResult<PublicMyAppointmentsDto>> VerifyAccessCodeAsync(string slug, PublicAccessVerifyDto dto);
         Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, Guid appointmentId, PublicCancelDto dto);
         Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto);
     }
@@ -272,6 +274,69 @@ namespace AgendaApp.Services
 
             return ServiceResult<PublicMyAppointmentsDto>.Unauthorized("No encontramos reservas con esos datos. Revisa el código que te dimos al reservar.");
         }
+
+        private const int MinutosCodigo = 10;
+        private const int IntentosCodigo = 5;
+
+        public async Task RequestAccessCodeAsync(string slug, string email)
+        {
+            var b = await FindBusinessAsync(slug);
+            if (b == null) return;
+            var correo = email.Trim().ToLowerInvariant();
+            var client = await _context.Clients
+                .Where(c => c.BusinessId == b.BusinessId && c.Email == correo)
+                .OrderByDescending(c => c.CreatedAt)
+                .FirstOrDefaultAsync();
+            if (client == null) { _logger.LogInformation("Código de acceso pedido para un correo sin cliente en {Slug}.", slug); return; }
+
+            // Evita reenvíos seguidos: como máximo un código nuevo por minuto
+            var ahora = DateTime.UtcNow;
+            if (client.AccessCodeExpiresAt.HasValue && client.AccessCodeExpiresAt.Value > ahora.AddMinutes(MinutosCodigo - 1)) return;
+
+            var codigo = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+            client.AccessCodeHash = HashCodigo(client.ClientId, codigo);
+            client.AccessCodeExpiresAt = ahora.AddMinutes(MinutosCodigo);
+            client.AccessCodeAttempts = 0;
+            await _context.SaveChangesAsync();
+
+            await _correos.EnviarCodigoAccesoAsync(b, client, codigo, MinutosCodigo);
+        }
+
+        public async Task<ServiceResult<PublicMyAppointmentsDto>> VerifyAccessCodeAsync(string slug, PublicAccessVerifyDto dto)
+        {
+            var b = await FindBusinessAsync(slug);
+            if (b == null) return ServiceResult<PublicMyAppointmentsDto>.NotFound("Empresa no encontrada.");
+
+            var correo = dto.Email.Trim().ToLowerInvariant();
+            var client = await _context.Clients
+                .Where(c => c.BusinessId == b.BusinessId && c.Email == correo && c.AccessCodeHash != null)
+                .OrderByDescending(c => c.AccessCodeExpiresAt)
+                .FirstOrDefaultAsync();
+            if (client == null || client.AccessCodeExpiresAt < DateTime.UtcNow || client.AccessCodeAttempts >= IntentosCodigo)
+                return ServiceResult<PublicMyAppointmentsDto>.Unauthorized("El código no es válido o ya venció. Pide uno nuevo.");
+
+            var esperado = Convert.FromHexString(client.AccessCodeHash!);
+            var recibido = Convert.FromHexString(HashCodigo(client.ClientId, dto.Code.Trim()));
+            if (!CryptographicOperations.FixedTimeEquals(esperado, recibido))
+            {
+                client.AccessCodeAttempts++;
+                await _context.SaveChangesAsync();
+                var quedan = IntentosCodigo - client.AccessCodeAttempts;
+                return ServiceResult<PublicMyAppointmentsDto>.Unauthorized(quedan > 0
+                    ? $"Código incorrecto. Te quedan {quedan} intento(s)."
+                    : "Superaste los intentos. Pide un código nuevo.");
+            }
+
+            client.AccessCodeHash = null;
+            client.AccessCodeExpiresAt = null;
+            client.AccessCodeAttempts = 0;
+            client.AccessToken ??= NewToken();
+            await _context.SaveChangesAsync();
+            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client));
+        }
+
+        private static string HashCodigo(Guid clientId, string codigo) =>
+            Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{clientId:N}:{codigo}")));
 
         public async Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, Guid appointmentId, PublicCancelDto dto)
         {
