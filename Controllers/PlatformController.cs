@@ -12,10 +12,12 @@ namespace AgendaApp.Controllers
     public class PlatformController : ControllerBase
     {
         private readonly IPlatformService _platform;
+        private readonly IPasswordResetService _reset;
 
-        public PlatformController(IPlatformService platform)
+        public PlatformController(IPlatformService platform, IPasswordResetService reset)
         {
             _platform = platform;
+            _reset = reset;
         }
 
         // GET: api/platform/businesses?status=Pending|Approved|Rejected (sin status: todas)
@@ -32,6 +34,19 @@ namespace AgendaApp.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
             return Responder(await _platform.RejectAsync(businessId, dto.Reason));
+        }
+
+        // Soporte: envía al dueño el enlace para restablecer su contraseña (24 h, un solo uso)
+        [HttpPost("businesses/{businessId:guid}/owner-password-reset")]
+        public async Task<ActionResult<PasswordResetSentDto>> OwnerPasswordReset(Guid businessId)
+        {
+            var r = await _reset.SendToOwnerAsync(businessId);
+            return r.ErrorType switch
+            {
+                ServiceErrorType.NotFound => NotFound(r.Error),
+                ServiceErrorType.BadRequest => BadRequest(r.Error),
+                _ => Ok(r.Data)
+            };
         }
 
         private ActionResult<PlatformBusinessDto> Responder(ServiceResult<PlatformBusinessDto> r) => r.ErrorType switch

@@ -12,10 +12,33 @@ namespace AgendaApp.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly IPasswordResetService _reset;
 
-        public AuthController(IAuthService authService)
+        public AuthController(IAuthService authService, IPasswordResetService reset)
         {
             _authService = authService;
+            _reset = reset;
+        }
+
+        // Restablecer contraseña con el enlace que envía soporte: primero se valida, luego se cambia
+        [HttpPost("password-reset/check")]
+        [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<ActionResult<PasswordResetCheckDto>> PasswordResetCheck([FromBody] PasswordResetTokenDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var r = await _reset.CheckAsync(dto.Token);
+            return r.Success ? Ok(r.Data) : BadRequest(r.Error);
+        }
+
+        [HttpPost("password-reset")]
+        [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<IActionResult> PasswordReset([FromBody] PasswordResetDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var r = await _reset.ResetAsync(dto.Token, dto.Password);
+            return r.Success ? Ok(new { message = "Listo, ya puedes iniciar sesión con tu contraseña nueva." }) : BadRequest(r.Error);
         }
 
         // Registro público de una empresa: queda pendiente de aprobación por el operador

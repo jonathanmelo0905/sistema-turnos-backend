@@ -86,6 +86,7 @@ builder.Services.AddScoped<IReminderService, ReminderService>();
 builder.Services.AddScoped<IUserPhotoService, UserPhotoService>();
 builder.Services.AddScoped<IBusinessImageService, BusinessImageService>();
 builder.Services.AddScoped<IPlatformService, PlatformService>();
+builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
 // Archivos subidos: disco local por ahora. Al desplegar, registrar aquí la implementación
 // de almacenamiento de objetos (S3/R2/Azure Blob) según "Almacen:Tipo".
 builder.Services.AddSingleton<AgendaApp.Services.Almacen.IAlmacenArchivos, AgendaApp.Services.Almacen.AlmacenLocal>();

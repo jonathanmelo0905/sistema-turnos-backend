@@ -15,6 +15,7 @@ namespace AgendaApp.Context
         public DbSet<Client> Clients {  get; set; }
         public DbSet<Appointment> Appointments { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
         public DbSet<Service> Services { get; set; }
         public DbSet<UserService> UserServices { get; set; }
         public DbSet<BusinessSchedule> BusinessSchedules { get; set; }
@@ -116,6 +117,10 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Category>().Property(c => c.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Category>().Property(c => c.BusinessId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Service>().Property(s => s.CategoryId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+
+            modelBuilder.Entity<PasswordResetToken>().Property(t => t.PasswordResetTokenId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<PasswordResetToken>().Property(t => t.UserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<PasswordResetToken>().HasIndex(t => t.TokenHash).IsUnique().HasDatabaseName("IX_PasswordResetTokens_Hash");
 
             modelBuilder.Entity<Business>().HasIndex(b => b.Slug).IsUnique().HasDatabaseName("IX_Businesses_Slug");
             modelBuilder.Entity<Business>().Property(b => b.CancelLimitHours).HasDefaultValue(2);
