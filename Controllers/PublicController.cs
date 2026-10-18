@@ -78,6 +78,28 @@ namespace AgendaApp.Controllers
             return Map(await _public.VerifyAccessCodeAsync(slug, dto));
         }
 
+        // Entrar con correo o celular + contraseña (opcional, creada desde Mis turnos)
+        [HttpPost("businesses/{slug}/access/password")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<ActionResult<PublicMyAppointmentsDto>> AccessPassword(string slug, [FromBody] PublicAccessPasswordDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            return Map(await _public.AccessWithPasswordAsync(slug, dto));
+        }
+
+        // Crear o cambiar la contraseña con el código que guarda el navegador
+        [HttpPost("businesses/{slug}/me/password")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<IActionResult> SetPassword(string slug, [FromHeader(Name = "X-Client-Token")] string? token, [FromBody] PublicSetPasswordDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(token)) return Unauthorized("Falta el código del cliente.");
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var r = await _public.SetPasswordAsync(slug, token, dto.Password);
+            if (r.ErrorType == ServiceErrorType.NotFound) return NotFound(r.Error);
+            if (r.ErrorType == ServiceErrorType.Unauthorized) return Unauthorized(r.Error);
+            return Ok(new { message = "Listo: ya puedes entrar con tu contraseña." });
+        }
+
         [HttpPost("businesses/{slug}/appointments/{id:guid}/cancel")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
         public async Task<ActionResult<PublicAppointmentDto>> Cancel(string slug, Guid id, [FromBody] PublicCancelDto dto)

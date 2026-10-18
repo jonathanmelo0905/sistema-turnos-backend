@@ -106,6 +106,9 @@ namespace AgendaApp.Dtos
 
         // Casilla de términos y privacidad (obligatoria)
         public bool AcceptTerms { get; set; }
+
+        // Con sesión y datos distintos a los guardados: true los actualiza, false los conserva, null pregunta
+        public bool? UpdateMyData { get; set; }
     }
 
     public class PublicAppointmentDto
@@ -130,9 +133,15 @@ namespace AgendaApp.Dtos
 
     public class PublicBookResultDto
     {
-        public PublicAppointmentDto Appointment { get; set; } = null!;
-        public string AccessToken { get; set; } = null!;
-        public string ClientName { get; set; } = null!;
+        // Si la reserva no se hizo porque falta un paso: "Acceso" (ese correo o WhatsApp ya tiene cuenta:
+        // entrar primero) o "ConfirmarDatos" (con sesión, lo escrito difiere de lo guardado: ver Saved)
+        public string? Requires { get; set; }
+        public PublicClientDto? Saved { get; set; }
+
+        public PublicAppointmentDto? Appointment { get; set; }
+        public string? AccessToken { get; set; }
+        public string? ClientName { get; set; }
+        public bool HasPassword { get; set; }
     }
 
     // ---- Mis turnos ----
@@ -161,6 +170,22 @@ namespace AgendaApp.Dtos
         public string Code { get; set; } = null!;
     }
 
+    public class PublicAccessPasswordDto
+    {
+        // Correo o celular
+        [Required, MaxLength(150)]
+        public string Contact { get; set; } = null!;
+
+        [Required, MaxLength(100)]
+        public string Password { get; set; } = null!;
+    }
+
+    public class PublicSetPasswordDto
+    {
+        [Required, MinLength(8), MaxLength(100)]
+        public string Password { get; set; } = null!;
+    }
+
     public class PublicSuggestionDto
     {
         public Guid ServiceId { get; set; }
@@ -174,6 +199,9 @@ namespace AgendaApp.Dtos
     {
         public string ClientName { get; set; } = null!;
         public string AccessToken { get; set; } = null!;
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public bool HasPassword { get; set; }
         public List<PublicAppointmentDto> Upcoming { get; set; } = new();
         public List<PublicAppointmentDto> Past { get; set; } = new();
         public PublicSuggestionDto? Suggestion { get; set; }

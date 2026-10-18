@@ -15,6 +15,8 @@ namespace AgendaApp.Services
         Task<ServiceResult<PublicMyAppointmentsDto>> LookupAsync(string slug, PublicLookupDto dto);
         Task RequestAccessCodeAsync(string slug, string email);
         Task<ServiceResult<PublicMyAppointmentsDto>> VerifyAccessCodeAsync(string slug, PublicAccessVerifyDto dto);
+        Task<ServiceResult<PublicMyAppointmentsDto>> AccessWithPasswordAsync(string slug, PublicAccessPasswordDto dto);
+        Task<ServiceResult<bool>> SetPasswordAsync(string slug, string accessToken, string password);
         Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, Guid appointmentId, PublicCancelDto dto);
         Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto);
     }
@@ -172,7 +174,7 @@ namespace AgendaApp.Services
             if (!dto.AcceptTerms)
                 return ServiceResult<PublicBookResultDto>.BadRequest("Acepta los términos y la política de privacidad para reservar.");
             var digits = new string((dto.Client.Phone ?? "").Where(char.IsDigit).ToArray());
-            var correo = dto.Client.Email?.Trim();
+            var correo = dto.Client.Email?.Trim().ToLowerInvariant();
             if (digits.Length == 0 && string.IsNullOrEmpty(correo))
                 return ServiceResult<PublicBookResultDto>.BadRequest("Escribe tu correo o tu WhatsApp para poder avisarte de tu cita.");
             if (digits.Length > 0 && digits.Length < 7) return ServiceResult<PublicBookResultDto>.BadRequest("Escribe un WhatsApp válido.");
@@ -180,6 +182,37 @@ namespace AgendaApp.Services
                 return ServiceResult<PublicBookResultDto>.BadRequest($"Esta empresa recibe reservas con al menos {TextoAntelacion(b.MinAdvanceMinutes)} de anticipación. Elige una hora más adelante.");
             if (dto.Start.Date > DateTime.Today.AddDays(b.MaxDaysAhead - 1))
                 return ServiceResult<PublicBookResultDto>.BadRequest($"Solo se puede reservar hasta {b.MaxDaysAhead} días adelante.");
+
+            // Quién reserva. Un correo o WhatsApp que ya tiene cuenta solo se usa con su sesión
+            // (si no, cualquiera podría reservar a nombre de otro y ver o cambiar sus datos).
+            var nombre = dto.Client.Name.Trim();
+            var tel = digits == "" ? null : digits;
+            var email = string.IsNullOrEmpty(correo) ? null : correo;
+            var propio = string.IsNullOrWhiteSpace(dto.AccessToken) ? null
+                : await _context.Clients.FirstOrDefaultAsync(c => c.BusinessId == b.BusinessId && c.AccessToken == dto.AccessToken);
+            var conCuenta = await _context.Clients
+                .Where(c => c.BusinessId == b.BusinessId && ((email != null && c.Email == email) || (tel != null && c.Phone == tel)))
+                .Select(c => c.ClientId).ToListAsync();
+            if (conCuenta.Any(id => id != propio?.ClientId))
+                return ServiceResult<PublicBookResultDto>.Ok(new PublicBookResultDto { Requires = "Acceso" });
+
+            if (propio != null)
+            {
+                var difiere = !MismoNombre(propio.Name, nombre) || (tel != null && propio.Phone != tel) || (email != null && propio.Email != email);
+                if (difiere && dto.UpdateMyData == null)
+                    return ServiceResult<PublicBookResultDto>.Ok(new PublicBookResultDto
+                    {
+                        Requires = "ConfirmarDatos",
+                        Saved = new PublicClientDto { Name = propio.Name ?? "", Phone = propio.Phone, Email = propio.Email }
+                    });
+                if (difiere && dto.UpdateMyData == true)
+                {
+                    propio.Name = nombre;
+                    if (tel != null) propio.Phone = tel;
+                    if (email != null) propio.Email = email;
+                    await _context.SaveChangesAsync();
+                }
+            }
 
             // "Cualquiera": quien tenga libre esa hora y menos turnos ese día
             var userId = dto.UserId;
@@ -196,16 +229,13 @@ namespace AgendaApp.Services
                     .FirstAsync();
             }
 
-            // Cliente recordado por el navegador → se usa ese; si no, se busca/crea por teléfono o correo
-            Guid? clientId = null;
-            if (!string.IsNullOrWhiteSpace(dto.AccessToken))
-                clientId = await _context.Clients.Where(c => c.BusinessId == b.BusinessId && c.AccessToken == dto.AccessToken)
-                    .Select(c => (Guid?)c.ClientId).FirstOrDefaultAsync();
+            // Con sesión se usa ese cliente; si no, el correo y el WhatsApp son nuevos: se crea
+            var clientId = propio?.ClientId;
 
             var result = await _appointments.BookAsync(b.BusinessId, null, "Web", new AppointmentBookDto
             {
                 ClientId = clientId,
-                NewClient = clientId == null ? new NewClientDto { Name = dto.Client.Name.Trim(), Phone = digits == "" ? null : digits, Email = correo } : null,
+                NewClient = clientId == null ? new NewClientDto { Name = nombre, Phone = tel, Email = email } : null,
                 UserId = userId.Value,
                 ServiceId = dto.ServiceId,
                 Start = dto.Start,
@@ -224,8 +254,6 @@ namespace AgendaApp.Services
             client.AccessToken ??= NewToken();
             client.CreatedAt ??= DateTime.UtcNow;
             client.TermsAcceptedAt = DateTime.UtcNow;
-            // Completa el correo si el cliente lo da ahora y antes no lo tenía
-            if (string.IsNullOrWhiteSpace(client.Email) && !string.IsNullOrWhiteSpace(dto.Client.Email)) client.Email = dto.Client.Email.Trim().ToLowerInvariant();
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Reserva web {Id} en {Slug} para cliente {ClientId}.", result.Data!.AppointmentId, slug, client.ClientId);
@@ -233,7 +261,7 @@ namespace AgendaApp.Services
             var id = result.Data.AppointmentId;
             await _correos.EnviarAsync(id, TipoCorreoCita.Confirmacion);
             var a = (await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == id)).First();
-            return ServiceResult<PublicBookResultDto>.Ok(new PublicBookResultDto { Appointment = a, AccessToken = client.AccessToken, ClientName = client.Name ?? "" });
+            return ServiceResult<PublicBookResultDto>.Ok(new PublicBookResultDto { Appointment = a, AccessToken = client.AccessToken, ClientName = client.Name ?? "", HasPassword = client.PasswordHash != null });
         }
 
         public async Task<ServiceResult<PublicMyAppointmentsDto>> MyAppointmentsAsync(string slug, string accessToken)
@@ -335,6 +363,47 @@ namespace AgendaApp.Services
             return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client));
         }
 
+        public async Task<ServiceResult<PublicMyAppointmentsDto>> AccessWithPasswordAsync(string slug, PublicAccessPasswordDto dto)
+        {
+            var b = await FindBusinessAsync(slug);
+            if (b == null) return ServiceResult<PublicMyAppointmentsDto>.NotFound("Empresa no encontrada.");
+
+            var contacto = dto.Contact.Trim().ToLowerInvariant();
+            var digitos = new string(contacto.Where(char.IsDigit).ToArray());
+            var candidatos = await _context.Clients
+                .Where(c => c.BusinessId == b.BusinessId && c.PasswordHash != null &&
+                    ((c.Email != null && c.Email == contacto) || (!contacto.Contains('@') && digitos.Length >= 7 && c.Phone != null && c.Phone.Contains(digitos))))
+                .ToListAsync();
+
+            var client = candidatos.FirstOrDefault(c => BCrypt.Net.BCrypt.Verify(dto.Password, c.PasswordHash));
+            if (client == null)
+                return ServiceResult<PublicMyAppointmentsDto>.Unauthorized("Correo, celular o contraseña incorrectos.");
+
+            client.AccessToken ??= NewToken();
+            await _context.SaveChangesAsync();
+            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client));
+        }
+
+        // Crear o cambiar la contraseña con la sesión del navegador (AccessToken)
+        public async Task<ServiceResult<bool>> SetPasswordAsync(string slug, string accessToken, string password)
+        {
+            var b = await FindBusinessAsync(slug);
+            if (b == null) return ServiceResult<bool>.NotFound("Empresa no encontrada.");
+
+            var client = await _context.Clients
+                .FirstOrDefaultAsync(c => c.BusinessId == b.BusinessId && c.AccessToken == accessToken && accessToken != "");
+            if (client == null) return ServiceResult<bool>.Unauthorized("No te reconocimos. Vuelve a entrar a tus turnos.");
+
+            client.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+            await _context.SaveChangesAsync();
+            return ServiceResult<bool>.Ok(true);
+        }
+
+        // Compara nombres sin importar mayúsculas ni espacios de más
+        private static bool MismoNombre(string? a, string b) =>
+            string.Equals(string.Join(' ', (a ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)),
+                string.Join(' ', b.Split(' ', StringSplitOptions.RemoveEmptyEntries)), StringComparison.OrdinalIgnoreCase);
+
         private static string HashCodigo(Guid clientId, string codigo) =>
             Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{clientId:N}:{codigo}")));
 
@@ -416,6 +485,9 @@ namespace AgendaApp.Services
             {
                 ClientName = client.Name ?? "",
                 AccessToken = client.AccessToken!,
+                Email = client.Email,
+                Phone = client.Phone,
+                HasPassword = client.PasswordHash != null,
                 Upcoming = todos.Where(a => a.End >= ahora && abiertos.Contains(a.Status)).OrderBy(a => a.Start).ToList(),
                 Past = todos.Where(a => !(a.End >= ahora && abiertos.Contains(a.Status))).OrderByDescending(a => a.Start).Take(20).ToList(),
                 Suggestion = await SuggestAsync(b.BusinessId, client.ClientId)

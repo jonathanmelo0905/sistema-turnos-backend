@@ -23,6 +23,10 @@ namespace AgendaApp.Context
         public DateTime? AccessCodeExpiresAt { get; set; }
         public int AccessCodeAttempts { get; set; }
 
+        // Contraseña opcional (BCrypt) para entrar sin pedir código; vacía si no la creó
+        [System.ComponentModel.DataAnnotations.MaxLength(100)]
+        public string? PasswordHash { get; set; }
+
         // Última vez que aceptó términos y privacidad al reservar por la web
         public DateTime? TermsAcceptedAt { get; set; }
 

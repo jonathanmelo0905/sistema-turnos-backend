@@ -369,6 +369,10 @@ namespace AgendaApp.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("PasswordHash")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<string>("Phone")
                         .HasColumnType("longtext");
 
