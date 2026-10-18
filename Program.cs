@@ -19,8 +19,13 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AppCorsPolicy", policy =>
     {
+        // En Development también se aceptan los fronts abiertos desde la red local (celular, tablet)
+        if (builder.Environment.IsDevelopment())
+            policy.SetIsOriginAllowed(origen => allowedOrigins.Contains(origen) || EsOrigenRedLocal(origen));
+        else
+            policy.WithOrigins(allowedOrigins);
+
         policy
-            .WithOrigins(allowedOrigins)
             .AllowAnyMethod()
             .AllowAnyHeader();
     });
@@ -168,7 +173,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseAppExceptionHandling();
 
-app.UseHttpsRedirection();
+// En Development no se redirige: el celular entra por http (puerto 5232), sin el certificado de localhost
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
 app.UseCors("AppCorsPolicy");
 // Archivos de AlmacenLocal (fotos del personal) en /archivos. Se crea la carpeta para
 // que se sirva aunque aún no se haya subido nada.
@@ -186,3 +193,13 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+
+// Origen http(s) de una IP privada (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+static bool EsOrigenRedLocal(string origen)
+{
+    if (!Uri.TryCreate(origen, UriKind.Absolute, out var uri) ||
+        !System.Net.IPAddress.TryParse(uri.Host, out var ip)) return false;
+    var b = ip.GetAddressBytes();
+    return b.Length == 4 && (b[0] == 10 || (b[0] == 192 && b[1] == 168) || (b[0] == 172 && b[1] >= 16 && b[1] <= 31));
+}
