@@ -362,6 +362,9 @@ namespace AgendaApp.Migrations
                     b.Property<string>("Phone")
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime?>("TermsAcceptedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.HasKey("ClientId");
 
                     b.HasIndex("AccessToken")

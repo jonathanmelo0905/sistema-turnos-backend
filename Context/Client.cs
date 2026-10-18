@@ -17,6 +17,9 @@ namespace AgendaApp.Context
 
         public DateTime? CreatedAt { get; set; }
 
+        // Última vez que aceptó términos y privacidad al reservar por la web
+        public DateTime? TermsAcceptedAt { get; set; }
+
 
         // 👇 Relación uno-a-muchos con Appointment
         public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();

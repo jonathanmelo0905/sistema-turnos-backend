@@ -167,8 +167,13 @@ namespace AgendaApp.Services
             var b = await FindBusinessAsync(slug);
             if (b == null) return ServiceResult<PublicBookResultDto>.NotFound("Empresa no encontrada.");
 
-            var digits = new string(dto.Client.Phone.Where(char.IsDigit).ToArray());
-            if (digits.Length < 7) return ServiceResult<PublicBookResultDto>.BadRequest("Escribe un teléfono válido.");
+            if (!dto.AcceptTerms)
+                return ServiceResult<PublicBookResultDto>.BadRequest("Acepta los términos y la política de privacidad para reservar.");
+            var digits = new string((dto.Client.Phone ?? "").Where(char.IsDigit).ToArray());
+            var correo = dto.Client.Email?.Trim();
+            if (digits.Length == 0 && string.IsNullOrEmpty(correo))
+                return ServiceResult<PublicBookResultDto>.BadRequest("Escribe tu correo o tu WhatsApp para poder avisarte de tu cita.");
+            if (digits.Length > 0 && digits.Length < 7) return ServiceResult<PublicBookResultDto>.BadRequest("Escribe un WhatsApp válido.");
             if (dto.Start < DateTime.Now.AddMinutes(b.MinAdvanceMinutes))
                 return ServiceResult<PublicBookResultDto>.BadRequest($"Esta empresa recibe reservas con al menos {TextoAntelacion(b.MinAdvanceMinutes)} de anticipación. Elige una hora más adelante.");
             if (dto.Start.Date > DateTime.Today.AddDays(b.MaxDaysAhead - 1))
@@ -198,7 +203,7 @@ namespace AgendaApp.Services
             var result = await _appointments.BookAsync(b.BusinessId, null, "Web", new AppointmentBookDto
             {
                 ClientId = clientId,
-                NewClient = clientId == null ? new NewClientDto { Name = dto.Client.Name.Trim(), Phone = digits, Email = dto.Client.Email?.Trim() } : null,
+                NewClient = clientId == null ? new NewClientDto { Name = dto.Client.Name.Trim(), Phone = digits == "" ? null : digits, Email = correo } : null,
                 UserId = userId.Value,
                 ServiceId = dto.ServiceId,
                 Start = dto.Start,
@@ -216,6 +221,7 @@ namespace AgendaApp.Services
             var client = await _context.Clients.FirstAsync(c => c.ClientId == result.Data!.ClientId);
             client.AccessToken ??= NewToken();
             client.CreatedAt ??= DateTime.UtcNow;
+            client.TermsAcceptedAt = DateTime.UtcNow;
             // Completa el correo si el cliente lo da ahora y antes no lo tenía
             if (string.IsNullOrWhiteSpace(client.Email) && !string.IsNullOrWhiteSpace(dto.Client.Email)) client.Email = dto.Client.Email.Trim().ToLowerInvariant();
             await _context.SaveChangesAsync();

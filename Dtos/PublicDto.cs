@@ -76,8 +76,9 @@ namespace AgendaApp.Dtos
         [Required, MinLength(2), MaxLength(150)]
         public string Name { get; set; } = null!;
 
-        [Required, MaxLength(30)]
-        public string Phone { get; set; } = null!;
+        // Correo o WhatsApp: al menos uno
+        [MaxLength(30)]
+        public string? Phone { get; set; }
 
         [EmailAddress, MaxLength(150)]
         public string? Email { get; set; }
@@ -102,6 +103,9 @@ namespace AgendaApp.Dtos
 
         // Si el cliente ya fue recordado por este navegador
         public string? AccessToken { get; set; }
+
+        // Casilla de términos y privacidad (obligatoria)
+        public bool AcceptTerms { get; set; }
     }
 
     public class PublicAppointmentDto
