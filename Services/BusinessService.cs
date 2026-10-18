@@ -30,6 +30,25 @@ namespace AgendaApp.Services
             return ServiceResult<BusinessResponseDto>.Ok(ToDto(business));
         }
 
+        public async Task<ServiceResult<BusinessSetupDto>> GetSetupAsync(Guid businessId)
+        {
+            var b = await _context.Businesses.AsNoTracking().FirstOrDefaultAsync(x => x.BusinessId == businessId);
+            if (b == null)
+                return ServiceResult<BusinessSetupDto>.NotFound("No encontramos la empresa.");
+
+            return ServiceResult<BusinessSetupDto>.Ok(new BusinessSetupDto
+            {
+                Datos = (!string.IsNullOrWhiteSpace(b.Phone) || !string.IsNullOrWhiteSpace(b.WhatsApp))
+                    && !string.IsNullOrWhiteSpace(b.Address) && !string.IsNullOrWhiteSpace(b.Description),
+                Imagenes = b.LogoUrl != null && b.CoverUrl != null,
+                Horario = await _context.BusinessSchedules.AnyAsync(s => s.BusinessId == businessId && s.IsOpen),
+                Categorias = await _context.Categories.AnyAsync(c => c.BusinessId == businessId && c.Active),
+                Servicios = await _context.Services.AnyAsync(s => s.BusinessId == businessId && s.Active),
+                Equipo = await _context.UserServices.AnyAsync(us => us.User.BusinessId == businessId && us.User.Active && us.Service.Active),
+                Publicada = b.IsPublished
+            });
+        }
+
         // El dueño decide si la empresa sale en la web pública (directorio y página de reservas)
         public async Task<ServiceResult<BusinessResponseDto>> SetVisibilityAsync(Guid businessId, bool published)
         {

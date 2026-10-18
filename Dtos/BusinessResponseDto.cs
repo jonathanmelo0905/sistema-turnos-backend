@@ -27,4 +27,16 @@ namespace AgendaApp.Dtos
 
         public List<UserResponseDto> Users { get; set; } = new();
     }
+
+    // Guía "Configura tu empresa" (Inicio del dueño): qué pasos ya están hechos
+    public class BusinessSetupDto
+    {
+        public bool Datos { get; set; }          // teléfono o WhatsApp, dirección y descripción
+        public bool Imagenes { get; set; }       // logo y portada
+        public bool Horario { get; set; }        // al menos un día abierto
+        public bool Categorias { get; set; }     // al menos una activa
+        public bool Servicios { get; set; }      // al menos uno activo
+        public bool Equipo { get; set; }         // alguien activo con servicios asignados
+        public bool Publicada { get; set; }
+    }
 }

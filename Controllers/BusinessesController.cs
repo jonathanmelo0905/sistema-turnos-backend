@@ -57,6 +57,18 @@ namespace AgendaApp.Controllers
             };
         }
 
+        // GET: api/businesses/{id}/setup — pasos de la guía "Configura tu empresa"
+        [HttpGet("{businessId:guid}/setup")]
+        [Authorize(Policy = "business.edit")]
+        public async Task<ActionResult<BusinessSetupDto>> Setup(Guid businessId)
+        {
+            if (!_tenant.IsOwnBusiness(businessId))
+                return Forbid();
+
+            var result = await _businessService.GetSetupAsync(businessId);
+            return result.Success ? Ok(result.Data) : NotFound(result.Error);
+        }
+
         // PUT: api/businesses/{id}/visibility { published } — mostrar u ocultar la empresa a los clientes
         [HttpPut("{businessId:guid}/visibility")]
         [Authorize(Policy = "business.edit")]
