@@ -18,6 +18,7 @@ namespace AgendaApp.Services
         Task<ServiceResult<PublicMyAppointmentsDto>> AccessWithPasswordAsync(string slug, PublicAccessPasswordDto dto);
         Task<ServiceResult<bool>> SetPasswordAsync(string slug, string accessToken, string password);
         Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, Guid appointmentId, PublicCancelDto dto);
+        Task<ServiceResult<PublicAppointmentDto>> RescheduleAsync(string slug, Guid appointmentId, PublicRescheduleDto dto);
         Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto);
     }
 
@@ -429,6 +430,39 @@ namespace AgendaApp.Services
             return ServiceResult<PublicAppointmentDto>.Ok((await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == appointmentId)).First());
         }
 
+        // Otra hora con la misma persona: reglas de la reserva sin sesión y el límite de cancelación
+        public async Task<ServiceResult<PublicAppointmentDto>> RescheduleAsync(string slug, Guid appointmentId, PublicRescheduleDto dto)
+        {
+            var b = await FindBusinessAsync(slug);
+            if (b == null) return ServiceResult<PublicAppointmentDto>.NotFound("Empresa no encontrada.");
+
+            var a = await _context.Appointments.AsNoTracking().Include(x => x.Client)
+                .FirstOrDefaultAsync(x => x.AppointmentId == appointmentId && x.BusinessId == b.BusinessId);
+            if (a == null || a.Client.AccessToken != dto.AccessToken)
+                return ServiceResult<PublicAppointmentDto>.NotFound("Turno no encontrado.");
+
+            if (a.Status != AppointmentStatus.Pending && a.Status != AppointmentStatus.Confirmed && a.Status != AppointmentStatus.PendingOutOfHours)
+                return ServiceResult<PublicAppointmentDto>.BadRequest("Este turno ya no se puede reprogramar.");
+            if (a.DateTimeStart < DateTime.Now.AddHours(b.CancelLimitHours))
+                return ServiceResult<PublicAppointmentDto>.BadRequest($"Solo puedes reprogramar en línea hasta {b.CancelLimitHours} h antes. Escríbele a la empresa.");
+            if (dto.Start == a.DateTimeStart)
+                return ServiceResult<PublicAppointmentDto>.BadRequest("Elige una hora distinta a la actual.");
+            if (dto.Start < DateTime.Now.AddMinutes(b.MinAdvanceMinutes))
+                return ServiceResult<PublicAppointmentDto>.BadRequest($"Esta empresa recibe reservas con al menos {TextoAntelacion(b.MinAdvanceMinutes)} de anticipación. Elige una hora más adelante.");
+            if (dto.Start.Date > DateTime.Today.AddDays(b.MaxDaysAhead - 1))
+                return ServiceResult<PublicAppointmentDto>.BadRequest($"Solo se puede reservar hasta {b.MaxDaysAhead} días adelante.");
+
+            var r = await _appointments.RescheduleAsync(b.BusinessId, appointmentId, Guid.Empty,
+                new AppointmentRescheduleDto { Start = dto.Start, Note = "Reprogramado por el cliente." });
+            if (!r.Success)
+                return r.ErrorType == ServiceErrorType.Conflict
+                    ? ServiceResult<PublicAppointmentDto>.Conflict("Esa hora acaba de ser tomada. Elige otra.")
+                    : ServiceResult<PublicAppointmentDto>.BadRequest(r.Error!);
+
+            _logger.LogInformation("Turno {Id} reprogramado por el cliente en {Slug}.", appointmentId, slug);
+            return ServiceResult<PublicAppointmentDto>.Ok((await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == appointmentId)).First());
+        }
+
         public async Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto)
         {
             var b = await FindBusinessAsync(slug);
@@ -549,6 +583,8 @@ namespace AgendaApp.Services
                     StaffName = a.User.Name,
                     CancelReason = a.CancelReason,
                     CanCancel = (a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.PendingOutOfHours)
+                        && a.DateTimeStart >= limite,
+                    CanReschedule = (a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.PendingOutOfHours)
                         && a.DateTimeStart >= limite,
                     MyRating = _context.Reviews.Where(r => r.AppointmentId == a.AppointmentId).Select(r => (int?)r.Rating).FirstOrDefault(),
                     CanReview = a.Status == AppointmentStatus.Completed && !_context.Reviews.Any(r => r.AppointmentId == a.AppointmentId)

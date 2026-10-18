@@ -108,6 +108,15 @@ namespace AgendaApp.Controllers
             return Map(await _public.CancelAsync(slug, id, dto));
         }
 
+        // Reprogramar: otra hora con la misma persona
+        [HttpPost("businesses/{slug}/appointments/{id:guid}/reschedule")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<ActionResult<PublicAppointmentDto>> Reschedule(string slug, Guid id, [FromBody] PublicRescheduleDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            return Map(await _public.RescheduleAsync(slug, id, dto));
+        }
+
         // Calificar una atención (solo turnos atendidos, una vez)
         [HttpPost("businesses/{slug}/appointments/{id:guid}/review")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]

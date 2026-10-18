@@ -131,7 +131,7 @@ namespace AgendaApp.Services
             var hora = a.DateTimeStart.ToString("h:mm tt", Es);
 
             var clienteUrl = (_config["App:ClienteUrl"] ?? "http://localhost:4400").TrimEnd('/');
-            var enlace = string.IsNullOrWhiteSpace(b.Slug) ? null : $"{clienteUrl}/{b.Slug}/mis-turnos";
+            var enlace = string.IsNullOrWhiteSpace(b.Slug) ? null : $"{clienteUrl}/{b.Slug}/mis-turnos?turno={a.AppointmentId}";
 
             string Fila(string etiqueta, string? valor) => string.IsNullOrWhiteSpace(valor) ? "" :
                 $"""<tr><td style="padding:6px 0;color:#6b7280;width:110px">{etiqueta}</td><td style="padding:6px 0;font-weight:600">{H(valor)}</td></tr>""";

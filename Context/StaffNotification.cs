@@ -37,6 +37,7 @@ namespace AgendaApp.Context
     {
         public const string WebBooking = "WebBooking";
         public const string ClientCancelled = "ClientCancelled";
+        public const string ClientRescheduled = "ClientRescheduled";
         public const string OutOfHours = "OutOfHours";
         public const string TimeOffRequested = "TimeOffRequested";
         public const string TimeOffReviewed = "TimeOffReviewed";

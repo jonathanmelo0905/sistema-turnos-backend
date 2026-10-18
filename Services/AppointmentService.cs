@@ -195,12 +195,16 @@ namespace AgendaApp.Services
             var business = await _context.Businesses.AsNoTracking().FirstAsync(b => b.BusinessId == businessId);
             var validacion = await _availabilityService.IsUserAvailable(newUserId, start, end, a.serviceId, id);
             var outOfHours = false;
+            // Guid.Empty = lo reprograma el cliente desde la web: solo horas dentro del horario
+            var porCliente = byUserId == Guid.Empty;
             if (!validacion.Status)
             {
-                if (validacion.Reason == AvailabilityReason.OutOfSchedule && business.AllowOutOfHoursBooking)
+                if (validacion.Reason == AvailabilityReason.OutOfSchedule && business.AllowOutOfHoursBooking && !porCliente)
                     outOfHours = true;
                 else if (validacion.Reason == AvailabilityReason.OverlapsAppointment)
                     return ServiceResult<AppointmentDto>.Conflict("El colaborador ya tiene un turno en ese horario.");
+                else if (porCliente)
+                    return ServiceResult<AppointmentDto>.BadRequest("Esa hora no está disponible. Elige otra.");
                 else
                     return ServiceResult<AppointmentDto>.BadRequest(validacion.Mensaje);
             }
@@ -240,10 +244,23 @@ namespace AgendaApp.Services
             var nota = $"Antes: {oldStart:dd/MM/yyyy HH:mm}" + (string.IsNullOrWhiteSpace(dto.Note) ? "" : $" · {dto.Note.Trim()}");
             AddHistory(id, cambio, oldStatus, a.Status, byUserId, nota);
 
-            // El cliente tiene que enterarse del cambio
-            a.NeedsContact = true;
-            a.ContactReason = newUserId != oldUser ? "Ahora lo atiende otra persona: avísale al cliente." : "Cambió la hora: confírmala con el cliente.";
-            a.ContactedAt = null;
+            if (porCliente)
+            {
+                // Lo movió el cliente: no hay a quién avisar, pero el negocio debe enterarse
+                a.NeedsContact = false;
+                var info = await _context.Appointments.Where(x => x.AppointmentId == id)
+                    .Select(x => new { Cliente = x.Client.Name, Servicio = x.Service.Name }).FirstAsync();
+                await _notify.NotifyAsync(businessId, (await _notify.OwnersAsync(businessId)).Append(newUserId), NotificationTypes.ClientRescheduled,
+                    $"{info.Cliente} reprogramó su turno", $"{info.Servicio} · ahora {start:dddd d 'de' MMMM, h:mm tt} (antes {oldStart:dddd d, h:mm tt})",
+                    $"turnos?fecha={start:yyyy-MM-dd}", id);
+            }
+            else
+            {
+                // El cliente tiene que enterarse del cambio
+                a.NeedsContact = true;
+                a.ContactReason = newUserId != oldUser ? "Ahora lo atiende otra persona: avísale al cliente." : "Cambió la hora: confírmala con el cliente.";
+                a.ContactedAt = null;
+            }
 
             if (newUserId != oldUser)
             {

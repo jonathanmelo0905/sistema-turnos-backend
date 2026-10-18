@@ -126,6 +126,8 @@ namespace AgendaApp.Dtos
         public Guid UserId { get; set; }
         public string StaffName { get; set; } = null!;
         public bool CanCancel { get; set; }
+        // Mismo límite que cancelar (CancelLimitHours)
+        public bool CanReschedule { get; set; }
         public string? CancelReason { get; set; }
         public bool CanReview { get; set; }
         public int? MyRating { get; set; }
@@ -214,5 +216,14 @@ namespace AgendaApp.Dtos
 
         [MaxLength(250)]
         public string? Reason { get; set; }
+    }
+
+    public class PublicRescheduleDto
+    {
+        [Required]
+        public string AccessToken { get; set; } = null!;
+
+        [Required]
+        public DateTime Start { get; set; }
     }
 }
