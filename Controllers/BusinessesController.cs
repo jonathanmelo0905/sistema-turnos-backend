@@ -57,6 +57,23 @@ namespace AgendaApp.Controllers
             };
         }
 
+        // PUT: api/businesses/{id}/visibility { published } — mostrar u ocultar la empresa a los clientes
+        [HttpPut("{businessId:guid}/visibility")]
+        [Authorize(Policy = "business.edit")]
+        public async Task<ActionResult<BusinessResponseDto>> SetVisibility(Guid businessId, [FromBody] BusinessVisibilityDto dto)
+        {
+            if (!_tenant.IsOwnBusiness(businessId))
+                return Forbid();
+
+            var result = await _businessService.SetVisibilityAsync(businessId, dto.Published);
+            return result.ErrorType switch
+            {
+                ServiceErrorType.NotFound => NotFound(result.Error),
+                ServiceErrorType.BadRequest => BadRequest(result.Error),
+                _ => Ok(result.Data)
+            };
+        }
+
         // POST: api/businesses/{id}/logo y /cover — multipart "file" (JPG, PNG o WEBP; logo 2 MB, portada 5 MB)
         [HttpPost("{businessId:guid}/logo")]
         [Authorize(Policy = "business.edit")]

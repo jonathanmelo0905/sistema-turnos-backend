@@ -81,6 +81,9 @@ namespace AgendaApp.Services
         private Task<string?> EstadoEmpresaAsync(Guid businessId) =>
             _context.Businesses.Where(b => b.BusinessId == businessId).Select(b => b.Status).FirstOrDefaultAsync();
 
+        // El operador vive en la empresa interna (Status Internal) y entra aunque no esté "Approved"
+        private static bool EsOperador(User u, string? estado) => u.Role == Roles.PlatformAdmin && estado == BusinessStatus.Internal;
+
         private static string MensajeEstado(string? estado) => estado switch
         {
             BusinessStatus.Pending => "Tu empresa está en revisión. Te avisaremos por correo cuando la aprobemos (normalmente en menos de un día hábil).",
@@ -143,7 +146,7 @@ namespace AgendaApp.Services
             }
 
             var estado = await EstadoEmpresaAsync(user.BusinessId);
-            if (estado != BusinessStatus.Approved)
+            if (estado != BusinessStatus.Approved && !EsOperador(user, estado))
             {
                 _logger.LogWarning("Login de {UserId} con empresa en estado {Estado}.", user.UserId, estado);
                 return ServiceResult<AuthResponseDto>.Unauthorized(MensajeEstado(estado));
@@ -174,7 +177,8 @@ namespace AgendaApp.Services
                 .FirstOrDefaultAsync(r => r.Token == refreshToken && !r.Revoked);
 
             if (existingToken == null || existingToken.Expiration < DateTime.UtcNow || !existingToken.User.Active
-                || await EstadoEmpresaAsync(existingToken.User.BusinessId) != BusinessStatus.Approved)
+                || await EstadoEmpresaAsync(existingToken.User.BusinessId) is var estado
+                   && estado != BusinessStatus.Approved && !EsOperador(existingToken.User, estado))
             {
                 _logger.LogWarning("Intento de refresh con token inválido o expirado.");
                 return ServiceResult<RefreshResultDto>.Unauthorized("Refresh token inválido o expirado.");

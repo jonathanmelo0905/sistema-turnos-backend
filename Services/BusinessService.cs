@@ -30,6 +30,20 @@ namespace AgendaApp.Services
             return ServiceResult<BusinessResponseDto>.Ok(ToDto(business));
         }
 
+        // El dueño decide si la empresa sale en la web pública (directorio y página de reservas)
+        public async Task<ServiceResult<BusinessResponseDto>> SetVisibilityAsync(Guid businessId, bool published)
+        {
+            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.BusinessId == businessId);
+            if (business == null)
+                return ServiceResult<BusinessResponseDto>.NotFound("No encontramos la empresa.");
+            if (published && string.IsNullOrWhiteSpace(business.Slug))
+                return ServiceResult<BusinessResponseDto>.BadRequest("Define la dirección de tu página antes de publicarla.");
+
+            business.IsPublished = published;
+            await _context.SaveChangesAsync();
+            return await GetBusinessAsync(businessId);
+        }
+
         public async Task<ServiceResult<BusinessResponseDto>> UpdateBusinessAsync(Guid businessId, BusinessUpdateDto dto)
         {
             var business = await _context.Businesses
@@ -81,6 +95,7 @@ namespace AgendaApp.Services
             Email = business.Email,
             Phone = business.Phone,
             LogoUrl = business.LogoUrl,
+            IsPublished = business.IsPublished,
             CoverUrl = business.CoverUrl,
             Address = business.Address,
             Description = business.Description,

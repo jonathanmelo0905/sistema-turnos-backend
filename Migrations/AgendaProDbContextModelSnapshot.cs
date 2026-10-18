@@ -224,6 +224,9 @@ namespace AgendaApp.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
@@ -245,6 +248,13 @@ namespace AgendaApp.Migrations
 
                     b.Property<int>("PlanId")
                         .HasColumnType("int");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Slug")
                         .HasMaxLength(80)

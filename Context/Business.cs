@@ -67,6 +67,16 @@ namespace AgendaApp.Context
         [Required, MaxLength(20)]
         public string Status { get; set; } = BusinessStatus.Approved;
 
+        // Visibilidad en la web pública: la decide el dueño (una empresa recién aprobada empieza oculta
+        // hasta que la configure). Sale a los clientes solo si está Approved y publicada
+        public bool IsPublished { get; set; } = false;
+
+        // Revisión del operador (T9): cuándo se aprobó o rechazó y el motivo del rechazo
+        public DateTime? ReviewedAt { get; set; }
+
+        [MaxLength(500)]
+        public string? RejectionReason { get; set; }
+
         // Aceptación de los términos al registrarse desde /registro
         public DateTime? TermsAcceptedAt { get; set; }
 

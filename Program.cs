@@ -85,6 +85,7 @@ builder.Services.AddScoped<ICorreoCitasService, CorreoCitasService>();
 builder.Services.AddScoped<IReminderService, ReminderService>();
 builder.Services.AddScoped<IUserPhotoService, UserPhotoService>();
 builder.Services.AddScoped<IBusinessImageService, BusinessImageService>();
+builder.Services.AddScoped<IPlatformService, PlatformService>();
 // Archivos subidos: disco local por ahora. Al desplegar, registrar aquí la implementación
 // de almacenamiento de objetos (S3/R2/Azure Blob) según "Almacen:Tipo".
 builder.Services.AddSingleton<AgendaApp.Services.Almacen.IAlmacenArchivos, AgendaApp.Services.Almacen.AlmacenLocal>();
@@ -120,6 +121,8 @@ builder.Services.AddAuthorization(options =>
     {
         options.AddPolicy(code, policy => policy.Requirements.Add(new PermissionRequirement(code)));
     }
+    // Panel de plataforma: solo operadores
+    options.AddPolicy("platform", policy => policy.RequireRole(Roles.PlatformAdmin));
 });
 
 // Add services to the container.
@@ -143,6 +146,15 @@ if (args.Contains("seed-historial") && app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     await DemoHistorySeeder.RunAsync(scope.ServiceProvider.GetRequiredService<AgendaProDbContext>(),
         scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Seed"));
+    return;
+}
+
+// "dotnet run -- crear-operador <correo> <contraseña> [nombre]" crea un operador de plataforma y termina
+if (args.Contains("crear-operador"))
+{
+    using var scope = app.Services.CreateScope();
+    Environment.ExitCode = await OperadorSeeder.RunAsync(scope.ServiceProvider.GetRequiredService<AgendaProDbContext>(),
+        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Operador"), args);
     return;
 }
 

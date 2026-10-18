@@ -52,4 +52,9 @@ namespace AgendaApp.Dtos
 
         public bool ValleyOnReschedule { get; set; }
     }
+
+    public class BusinessVisibilityDto
+    {
+        public bool Published { get; set; }
+    }
 }
