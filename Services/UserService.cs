@@ -103,13 +103,9 @@ namespace AgendaApp.Services
 
             await _context.SaveChangesAsync();
 
-            if (roleChanged)
-            {
-                // El cambio de rol afecta si el usuario tiene acceso implícito (Owner) o
-                // depende de la tabla de permisos (Encargado) — se invalida la cache para
-                // que el nuevo rol surta efecto de inmediato, igual que al otorgar/revocar.
-                _permissionCache.Invalidate(id);
-            }
+            // Rol, activo o contraseña pueden haber cambiado: se invalida la caché de permisos y de
+            // sesión para que SesionVigente lo vea en la siguiente petición del usuario.
+            _permissionCache.Invalidate(id);
 
             _logger.LogInformation("Usuario {UserId} actualizado. RoleChanged={RoleChanged} Active={Active}.", id, roleChanged, dto.Active);
             return ServiceResult.Ok();
@@ -125,6 +121,7 @@ namespace AgendaApp.Services
             user.Active = false;
             await RevokeSessionsAsync(id);
             await _context.SaveChangesAsync();
+            _permissionCache.Invalidate(id);
 
             _logger.LogInformation("Usuario {UserId} desactivado.", id);
             return true;

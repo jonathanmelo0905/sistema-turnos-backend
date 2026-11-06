@@ -18,9 +18,11 @@ namespace AgendaApp.Services
         private readonly IEmailService _email;
         private readonly IConfiguration _config;
         private readonly ILogger<PlatformService> _logger;
+        private readonly IPermissionCache _permissionCache;
 
-        public PlatformService(AgendaProDbContext context, IEmailService email, IConfiguration config, ILogger<PlatformService> logger)
+        public PlatformService(AgendaProDbContext context, IEmailService email, IConfiguration config, ILogger<PlatformService> logger, IPermissionCache permissionCache)
         {
+            _permissionCache = permissionCache;
             _context = context;
             _email = email;
             _config = config;
@@ -51,6 +53,7 @@ namespace AgendaApp.Services
             b.ReviewedAt = DateTime.UtcNow;
             b.RejectionReason = null;
             await _context.SaveChangesAsync();
+            _permissionCache.InvalidateBusiness(businessId);
             _logger.LogInformation("Empresa {BusinessId} aprobada.", businessId);
 
             var dto = await UnaAsync(businessId);
@@ -70,6 +73,8 @@ namespace AgendaApp.Services
             b.ReviewedAt = DateTime.UtcNow;
             b.RejectionReason = reason.Trim();
             await _context.SaveChangesAsync();
+            // Las peticiones con sesión del equipo dan 401 desde ya (SesionVigente)
+            _permissionCache.InvalidateBusiness(businessId);
 
             // Las sesiones abiertas del personal dejan de renovarse
             await _context.RefreshTokens.Where(r => r.User.BusinessId == businessId && !r.Revoked)

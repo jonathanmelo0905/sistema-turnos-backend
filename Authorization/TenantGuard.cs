@@ -36,6 +36,7 @@ namespace AgendaApp.Authorization
 
         public Guid UserId => ParseClaim(ClaimTypes.NameIdentifier) ?? ParseClaim("sub") ?? Guid.Empty;
         public Guid BusinessId => ParseClaim("BusinessId") ?? Guid.Empty;
+        // Igual al rol de la base: SesionVigente (OnTokenValidated) rechaza el token si cambió
         public string? Role => _user?.FindFirst(ClaimTypes.Role)?.Value;
         public bool IsOwner => Role == Roles.Owner;
 

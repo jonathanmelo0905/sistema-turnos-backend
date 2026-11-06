@@ -16,6 +16,7 @@ namespace AgendaApp.Authorization
 
         protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
         {
+            // El rol del claim ya coincide con el de la base: SesionVigente rechaza el token si no
             var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
             if (role == Roles.Owner)
             {

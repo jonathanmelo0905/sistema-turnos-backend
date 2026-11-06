@@ -129,6 +129,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
         };
+        // Cada petición con sesión se compara con la base: usuario activo, mismo rol y empresa aprobada
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = SesionVigente.ValidarAsync,
+            OnChallenge = SesionVigente.ResponderAsync
+        };
     });
 
 builder.Services.AddAuthorization(options =>
