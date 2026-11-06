@@ -280,6 +280,208 @@ namespace AgendaApp.Services
             return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(businessId, id))!);
         }
 
+        // ---------------------------------------------------------------- Cambiar servicio
+
+        private static readonly System.Globalization.CultureInfo EsCo = new("es-CO");
+
+        private sealed record PlanCambio(Appointment Turno, Service Servicio, ChangeServicePreviewDto Vista, List<(Appointment Turno, DateTime Ini, DateTime Fin)> Corridos);
+
+        // Calcula el cambio sin guardar: nuevo fin, precios, choques y el plan para correr los siguientes
+        private async Task<ServiceResult<PlanCambio>> PlanCambioServicioAsync(Guid businessId, Guid id, Guid serviceId)
+        {
+            var a = await _context.Appointments.FirstOrDefaultAsync(x => x.AppointmentId == id && x.BusinessId == businessId);
+            if (a == null) return ServiceResult<PlanCambio>.NotFound("Turno no encontrado.");
+            if (AppointmentStatus.IsClosed(a.Status))
+                return ServiceResult<PlanCambio>.BadRequest("Este turno ya está cerrado: no se puede cambiar el servicio.");
+
+            var service = await _context.Services.AsNoTracking().FirstOrDefaultAsync(s => s.ServiceId == serviceId && s.BusinessId == businessId);
+            if (service == null) return ServiceResult<PlanCambio>.NotFound("El servicio no existe en esta empresa.");
+            if (!service.Active) return ServiceResult<PlanCambio>.BadRequest("Ese servicio está desactivado.");
+            if (service.ServiceId == a.serviceId) return ServiceResult<PlanCambio>.BadRequest("El turno ya tiene ese servicio.");
+            if (!await _context.UserServices.AnyAsync(us => us.UserId == a.UserId && us.ServiceId == serviceId))
+                return ServiceResult<PlanCambio>.BadRequest("Quien atiende este turno no presta ese servicio.");
+
+            var margen = await _context.Businesses.Where(b => b.BusinessId == businessId).Select(b => b.BufferMinutes).FirstAsync();
+            var start = a.DateTimeStart;
+            var newEnd = start.AddMinutes(service.DurationMin);
+
+            // Los siguientes turnos del mismo colaborador ese día (los que pueden pisarse)
+            var finDia = start.Date.AddDays(1);
+            var siguientes = await _context.Appointments
+                .Include(x => x.Client).Include(x => x.Service)
+                .Where(x => x.UserId == a.UserId && x.AppointmentId != id && x.BusinessId == businessId
+                    && x.Status != AppointmentStatus.Cancelled && x.Status != AppointmentStatus.RejectedOutOfHours
+                    && x.DateTimeStart >= start && x.DateTimeStart < finDia)
+                .OrderBy(x => x.DateTimeStart)
+                .ToListAsync();
+
+            ChangeServiceTurnoDto Fila(Appointment t, DateTime ini, DateTime fin, bool fuera) => new()
+            {
+                AppointmentId = t.AppointmentId,
+                ClientName = t.Client.Name ?? "",
+                ServiceName = t.Service.Name,
+                OldStart = t.DateTimeStart,
+                OldEnd = t.DateTimeEnd,
+                NewStart = ini,
+                NewEnd = fin,
+                OutOfSchedule = fuera,
+                HasEmail = !string.IsNullOrWhiteSpace(t.Client.Email)
+            };
+
+            var vista = new ChangeServicePreviewDto
+            {
+                ServiceId = service.ServiceId,
+                ServiceName = service.Name,
+                Start = start,
+                NewEnd = newEnd,
+                DurationMin = service.DurationMin,
+                OldDurationMin = (int)(a.DateTimeEnd - a.DateTimeStart).TotalMinutes,
+                ListPrice = service.Price,
+                OldPrice = a.Price,
+                EndsOutOfSchedule = !await _availabilityService.FitsScheduleAsync(a.UserId, businessId, start, newEnd)
+            };
+
+            foreach (var t in siguientes.Where(t => t.DateTimeStart < newEnd.AddMinutes(margen)))
+                vista.Conflicts.Add(Fila(t, t.DateTimeStart, t.DateTimeEnd, false));
+
+            // Correr en cascada: cada turno empieza cuando termina el anterior (más el margen).
+            // Uno en curso o cerrado no se mueve: ahí se corta.
+            var corridos = new List<(Appointment, DateTime, DateTime)>();
+            var cursor = newEnd.AddMinutes(margen);
+            foreach (var t in siguientes)
+            {
+                if (t.DateTimeStart >= cursor) break;
+                if (t.Status == AppointmentStatus.InProgress || AppointmentStatus.IsClosed(t.Status)) break;
+                var ini = cursor;
+                var fin = ini + (t.DateTimeEnd - t.DateTimeStart);
+                var fuera = !await _availabilityService.FitsScheduleAsync(a.UserId, businessId, ini, fin);
+                corridos.Add((t, ini, fin));
+                vista.Shift.Add(Fila(t, ini, fin, fuera));
+                cursor = fin.AddMinutes(margen);
+            }
+            if (vista.Shift.Count > 0)
+                vista.ShiftMinutes = (int)(vista.Shift[0].NewStart - vista.Shift[0].OldStart).TotalMinutes;
+
+            // Horas Valle a esa hora: el colaborador elige si la cobra
+            if (a.Status != AppointmentStatus.PendingOutOfHours)
+            {
+                var pct = (await _valley.QuoteAsync(businessId, start, service.DurationMin))?.Pct;
+                if (pct is > 0)
+                {
+                    vista.ValleyPct = pct;
+                    vista.ValleyPrice = Math.Round(service.Price * (100 - pct.Value) / 100m, 0);
+                }
+            }
+
+            return ServiceResult<PlanCambio>.Ok(new PlanCambio(a, service, vista, corridos));
+        }
+
+        public async Task<ServiceResult<ChangeServicePreviewDto>> PreviewChangeServiceAsync(Guid businessId, Guid id, Guid serviceId)
+        {
+            var plan = await PlanCambioServicioAsync(businessId, id, serviceId);
+            return plan.Success
+                ? ServiceResult<ChangeServicePreviewDto>.Ok(plan.Data!.Vista)
+                : Reenviar<PlanCambio, ChangeServicePreviewDto>(plan);
+        }
+
+        public async Task<ServiceResult<AppointmentDto>> ChangeServiceAsync(Guid businessId, Guid id, Guid byUserId, AppointmentChangeServiceDto dto)
+        {
+            if (dto.Overlap is not (null or "Overlap" or "Shift"))
+                return ServiceResult<AppointmentDto>.BadRequest("Opción de solape no válida.");
+            if (dto.Notify is not (null or "Email" or "WhatsApp"))
+                return ServiceResult<AppointmentDto>.BadRequest("Canal de aviso no válido.");
+
+            var ref0 = await _context.Appointments.AsNoTracking()
+                .Where(x => x.AppointmentId == id && x.BusinessId == businessId)
+                .Select(x => new { x.UserId, x.DateTimeStart }).FirstOrDefaultAsync();
+            if (ref0 == null) return ServiceResult<AppointmentDto>.NotFound("Turno no encontrado.");
+
+            // 🔒 Bloquea los turnos del colaborador ese día y recalcula el plan con datos frescos
+            await using var tx = await _context.Database.BeginTransactionAsync();
+            var diaIni = ref0.DateTimeStart.Date;
+            var diaFin = diaIni.AddDays(1);
+            await _context.Appointments.FromSqlInterpolated($@"
+                SELECT * FROM Appointments
+                WHERE UserId = {ref0.UserId} AND DateTimeStart < {diaFin} AND DateTimeEnd > {diaIni}
+                FOR UPDATE").AsNoTracking().ToListAsync();
+
+            var planR = await PlanCambioServicioAsync(businessId, id, dto.ServiceId);
+            if (!planR.Success)
+            {
+                await tx.RollbackAsync();
+                return Reenviar<PlanCambio, AppointmentDto>(planR);
+            }
+            var (a, service, vista, corridos) = planR.Data!;
+
+            if (vista.Conflicts.Count > 0 && dto.Overlap == null)
+            {
+                await tx.RollbackAsync();
+                return ServiceResult<AppointmentDto>.Conflict($"El nuevo servicio se pisa con {vista.Conflicts.Count} turno(s). Elige si dejarlos solapados o correrlos.");
+            }
+
+            // Turno principal: servicio, fin y precio
+            var antes = await _context.Services.Where(s => s.ServiceId == a.serviceId).Select(s => s.Name).FirstOrDefaultAsync();
+            var notaAntes = $"Antes: {antes} · {vista.OldDurationMin} min" + (a.Price.HasValue ? $" · {a.Price.Value.ToString("C0", EsCo)}" : "");
+            a.serviceId = service.ServiceId;
+            a.DateTimeEnd = vista.NewEnd;
+            var conValle = dto.ApplyValley && vista.ValleyPct.HasValue;
+            a.ListPrice = service.Price;
+            a.ValleyDiscountPct = conValle ? vista.ValleyPct : null;
+            a.Price = conValle ? vista.ValleyPrice : service.Price;
+            a.UpdatedAt = DateTime.UtcNow;
+
+            var solape = vista.Conflicts.Count == 0 ? ""
+                : dto.Overlap == "Shift" ? $" · Se corrieron {corridos.Count} turno(s)"
+                : $" · Quedó solapado con {vista.Conflicts.Count} turno(s)";
+            AddHistory(id, "ServiceChanged", a.Status, a.Status, byUserId,
+                notaAntes + solape + (string.IsNullOrWhiteSpace(dto.Note) ? "" : $" · {dto.Note.Trim()}"));
+
+            // Correr los siguientes
+            var porCorreo = new List<(Guid Id, DateTime Antes)>();
+            if (dto.Overlap == "Shift" && vista.Conflicts.Count > 0)
+            {
+                for (var i = 0; i < corridos.Count; i++)
+                {
+                    var (t, ini, fin) = corridos[i];
+                    var fila = vista.Shift[i];
+                    var oldStart = t.DateTimeStart;
+                    var oldStatus = t.Status;
+                    var minutos = (int)(ini - oldStart).TotalMinutes;
+                    t.DateTimeStart = ini;
+                    t.DateTimeEnd = fin;
+                    t.UpdatedAt = DateTime.UtcNow;
+                    if (t.Status != AppointmentStatus.PendingOutOfHours) t.Status = AppointmentStatus.Pending;
+                    AddHistory(t.AppointmentId, "Rescheduled", oldStatus, t.Status, byUserId,
+                        $"Corrido {minutos} min por cambio de servicio del turno anterior · Antes: {oldStart:dd/MM/yyyy HH:mm}");
+
+                    if (dto.Notify == "Email" && fila.HasEmail)
+                        porCorreo.Add((t.AppointmentId, oldStart));
+                    else
+                    {
+                        t.NeedsContact = true;
+                        t.ContactReason = "Se corrió la hora: avísale al cliente.";
+                        t.ContactedAt = null;
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            _logger.LogInformation("Turno {Id}: servicio cambiado a {Servicio} por {By} ({Solape}).", id, service.ServiceId, byUserId, dto.Overlap ?? "sin choque");
+            foreach (var (cid, antesIni) in porCorreo)
+                await _correos.EnviarAsync(cid, TipoCorreoCita.Reprogramacion,
+                    $"Antes era el {antesIni.ToString("dddd d 'de' MMMM 'a las' h:mm tt", EsCo)}.");
+            return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(businessId, id))!);
+        }
+
+        private static ServiceResult<TOut> Reenviar<TIn, TOut>(ServiceResult<TIn> r) => r.ErrorType switch
+        {
+            ServiceErrorType.NotFound => ServiceResult<TOut>.NotFound(r.Error!),
+            ServiceErrorType.Conflict => ServiceResult<TOut>.Conflict(r.Error!),
+            _ => ServiceResult<TOut>.BadRequest(r.Error!)
+        };
+
         // ---------------------------------------------------------------- Estados
 
         public async Task<ServiceResult<AppointmentDto>> ChangeStatusAsync(Guid businessId, Guid id, Guid byUserId, AppointmentStatusDto dto)

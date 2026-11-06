@@ -88,6 +88,37 @@ namespace AgendaApp.Controllers
             return Map(await _appointments.RescheduleAsync(_tenant.BusinessId, id, _tenant.UserId, dto));
         }
 
+        // POST /api/appointments/{id}/change-service/preview { serviceId } — calcula sin guardar
+        [HttpPost("{id:guid}/change-service/preview")]
+        public async Task<ActionResult<ChangeServicePreviewDto>> PreviewChangeService(Guid id, [FromBody] ChangeServicePreviewRequestDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
+            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+
+            var r = await _appointments.PreviewChangeServiceAsync(_tenant.BusinessId, id, dto.ServiceId);
+            return r.ErrorType switch
+            {
+                ServiceErrorType.None => Ok(r.Data),
+                ServiceErrorType.NotFound => NotFound(r.Error),
+                ServiceErrorType.Conflict => Conflict(r.Error),
+                _ => BadRequest(r.Error)
+            };
+        }
+
+        // POST /api/appointments/{id}/change-service { serviceId, applyValley, overlap, notify, note }
+        [HttpPost("{id:guid}/change-service")]
+        public async Task<ActionResult<AppointmentDto>> ChangeService(Guid id, [FromBody] AppointmentChangeServiceDto dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
+            if (actual == null) return NotFound();
+            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+
+            return Map(await _appointments.ChangeServiceAsync(_tenant.BusinessId, id, _tenant.UserId, dto));
+        }
+
         // POST /api/appointments/{id}/status { status, note }
         [HttpPost("{id:guid}/status")]
         public async Task<ActionResult<AppointmentDto>> ChangeStatus(Guid id, [FromBody] AppointmentStatusDto dto)

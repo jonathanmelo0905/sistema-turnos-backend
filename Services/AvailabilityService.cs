@@ -231,6 +231,19 @@ namespace AgendaApp.Services
         }
 
         /// <summary>
+        /// ¿El rango cabe en el horario del colaborador ese día (horario, almuerzo, excepciones,
+        /// festivos y ausencias)? No mira otros turnos. Lo usa el cambio de servicio para avisar.
+        /// </summary>
+        public async Task<bool> FitsScheduleAsync(Guid userId, Guid businessId, DateTime start, DateTime end)
+        {
+            if (end.Date != start.Date && end.TimeOfDay != TimeSpan.Zero) return false;
+            if (await TimeOffCoversAsync(userId, start, end)) return false;
+            var intervalos = await GetDayIntervalsAsync(userId, businessId, start.Date);
+            var fin = end.Date > start.Date ? TimeSpan.FromHours(24) : end.TimeOfDay;
+            return intervalos.Any(i => start.TimeOfDay >= i.Start && fin <= i.End);
+        }
+
+        /// <summary>
         /// Calcula los intervalos libres de un día: horario de empresa ∩ horario del colaborador,
         /// menos el almuerzo del colaborador, aplicando luego las excepciones puntuales de ese día.
         /// Negocio sin BusinessSchedule configurado para ese día = cerrado (fail-safe).

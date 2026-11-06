@@ -13,6 +13,11 @@ namespace AgendaApp.Services
         // Reprogramar (otra hora) o ceder (otro colaborador), revalidando disponibilidad
         Task<ServiceResult<AppointmentDto>> RescheduleAsync(Guid businessId, Guid id, Guid byUserId, AppointmentRescheduleDto dto);
 
+        // Cambiar el servicio (el cliente pidió otro): vista previa con choques y el plan para correr
+        // los siguientes; al aplicar, si se pisa, Overlap = "Overlap" (solapar) o "Shift" (correr)
+        Task<ServiceResult<ChangeServicePreviewDto>> PreviewChangeServiceAsync(Guid businessId, Guid id, Guid serviceId);
+        Task<ServiceResult<AppointmentDto>> ChangeServiceAsync(Guid businessId, Guid id, Guid byUserId, AppointmentChangeServiceDto dto);
+
         Task<ServiceResult<AppointmentDto>> ChangeStatusAsync(Guid businessId, Guid id, Guid byUserId, AppointmentStatusDto dto);
 
         // Compatibilidad con el contrato anterior (POST /api/appointments con fin explícito)

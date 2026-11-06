@@ -100,6 +100,66 @@ namespace AgendaApp.Dtos
         public string? Note { get; set; }
     }
 
+    // Cambiar el servicio de un turno (el cliente llegó y pidió otro)
+    public class ChangeServicePreviewRequestDto
+    {
+        [Required]
+        public Guid ServiceId { get; set; }
+    }
+
+    public class AppointmentChangeServiceDto
+    {
+        [Required]
+        public Guid ServiceId { get; set; }
+
+        // Con Horas Valle en esa hora: true cobra con descuento, false el precio completo
+        public bool ApplyValley { get; set; }
+
+        // Si se pisa con los siguientes: "Overlap" (quedan solapados) o "Shift" (se corren)
+        [MaxLength(10)]
+        public string? Overlap { get; set; }
+
+        // Aviso a los clientes de los turnos corridos: "Email" o "WhatsApp"
+        [MaxLength(10)]
+        public string? Notify { get; set; }
+
+        [MaxLength(200)]
+        public string? Note { get; set; }
+    }
+
+    public class ChangeServiceTurnoDto
+    {
+        public Guid AppointmentId { get; set; }
+        public string ClientName { get; set; } = "";
+        public string ServiceName { get; set; } = "";
+        public DateTime OldStart { get; set; }
+        public DateTime OldEnd { get; set; }
+        public DateTime NewStart { get; set; }
+        public DateTime NewEnd { get; set; }
+        public bool OutOfSchedule { get; set; }
+        public bool HasEmail { get; set; }
+    }
+
+    public class ChangeServicePreviewDto
+    {
+        public Guid ServiceId { get; set; }
+        public string ServiceName { get; set; } = "";
+        public DateTime Start { get; set; }
+        public DateTime NewEnd { get; set; }
+        public int DurationMin { get; set; }
+        public int OldDurationMin { get; set; }
+        public decimal ListPrice { get; set; }
+        public decimal? OldPrice { get; set; }
+        public int? ValleyPct { get; set; }
+        public decimal? ValleyPrice { get; set; }
+        public bool EndsOutOfSchedule { get; set; }
+        // Turnos con los que se pisa el nuevo horario
+        public List<ChangeServiceTurnoDto> Conflicts { get; set; } = new();
+        // Plan para correr los siguientes (en cascada)
+        public List<ChangeServiceTurnoDto> Shift { get; set; } = new();
+        public int ShiftMinutes { get; set; }
+    }
+
     public class AppointmentStatusDto
     {
         [Required, MaxLength(30)]
