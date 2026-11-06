@@ -4,6 +4,7 @@ using AgendaApp.Middleware;
 using AgendaApp.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -147,6 +148,24 @@ builder.Services.AddControllers(o => o.Filters.Add<MensajeErrorFilter>());
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Detrás de un proxy (nginx en Docker) la conexión llega con la IP del proxy: se toma la real de
+// X-Forwarded-For, pero solo si viene de una red de confianza ("Proxy:RedesConocidas", p. ej.
+// "172.28.0.0/16"). Sin configurar, solo se confía en localhost (valor por defecto de ASP.NET).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+    // nginx agrega la IP con la que le llegó la petición; si antes pasó por otro proxy de la red
+    // conocida (Tailscale Funnel entra por la puerta de enlace de Docker), se salta uno más
+    options.ForwardLimit = 2;
+    foreach (var red in (builder.Configuration["Proxy:RedesConocidas"] ?? "")
+                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var partes = red.Split('/');
+        options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(
+            System.Net.IPAddress.Parse(partes[0]), partes.Length > 1 ? int.Parse(partes[1]) : 32));
+    }
+});
+
 var app = builder.Build();
 
 // Empresas sin dirección pública (creadas antes de la Fase 4) reciben una
@@ -180,6 +199,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Primero de todo: el límite de peticiones y los logs ya ven la IP real
+app.UseForwardedHeaders();
 app.UseAppExceptionHandling();
 
 // En Development no se redirige: el celular entra por http (puerto 5232), sin el certificado de localhost
@@ -193,7 +214,9 @@ Directory.CreateDirectory(carpetaArchivos);
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(carpetaArchivos),
-    RequestPath = "/archivos"
+    RequestPath = "/archivos",
+    // El navegador no adivina el tipo: una imagen nunca se interpreta como HTML o script
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.XContentTypeOptions = "nosniff"
 });
 app.UseAuthentication();
 app.UseRateLimiter();
