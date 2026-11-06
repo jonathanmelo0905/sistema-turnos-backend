@@ -65,6 +65,7 @@ namespace AgendaApp.Services
                 Business = business
             };
 
+            business.OwnerUserId = user.UserId;   // propietario principal
             _context.Businesses.Add(business);
             _context.Users.Add(user);
             await _context.SaveChangesAsync();

@@ -30,6 +30,15 @@ namespace AgendaApp.Controllers
 
         private Task<bool> GestionaEquipo() => _tenant.HasPermissionAsync(PermissionCodes.CollaboratorsManage);
 
+        // Modificar un turno: el suyo, o con collaborators.manage; los del dueño solo otro dueño
+        private async Task<ActionResult?> SinPermisoSobre(Guid duenoDelTurno)
+        {
+            if (await _tenant.EsDuenoAjenoAsync(duenoDelTurno))
+                return StatusCode(403, new { message = "Los turnos del dueño solo los gestiona un dueño." });
+            if (duenoDelTurno != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            return null;
+        }
+
         // GET /api/appointments?from=&to=&userId=&status=
         [HttpGet]
         public async Task<ActionResult<List<AppointmentDto>>> List(
@@ -82,8 +91,7 @@ namespace AgendaApp.Controllers
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
 
-            var gestiona = await GestionaEquipo();
-            if (actual.UserId != _tenant.UserId && !gestiona) return Forbid();
+            if (await SinPermisoSobre(actual.UserId) is { } prohibido) return prohibido;
             // Ceder a otra persona: la propia colaboradora puede ceder sus turnos a una compañera
             if (dto.UserId.HasValue && !await _tenant.UserInBusinessAsync(dto.UserId.Value)) return NotFound("Colaborador no encontrado.");
 
@@ -97,7 +105,7 @@ namespace AgendaApp.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
-            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            if (await SinPermisoSobre(actual.UserId) is { } prohibido) return prohibido;
 
             var r = await _appointments.PreviewChangeServiceAsync(_tenant.BusinessId, id, dto.ServiceId);
             return r.ErrorType switch
@@ -116,7 +124,7 @@ namespace AgendaApp.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
-            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            if (await SinPermisoSobre(actual.UserId) is { } prohibido) return prohibido;
 
             return Map(await _appointments.ChangeServiceAsync(_tenant.BusinessId, id, _tenant.UserId, dto));
         }
@@ -128,7 +136,7 @@ namespace AgendaApp.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
-            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            if (await SinPermisoSobre(actual.UserId) is { } prohibido) return prohibido;
 
             return Map(await _appointments.ChangeStatusAsync(_tenant.BusinessId, id, _tenant.UserId, dto));
         }
@@ -152,7 +160,7 @@ namespace AgendaApp.Controllers
         {
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
-            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            if (await SinPermisoSobre(actual.UserId) is { } prohibido) return prohibido;
             return Map(await _appointments.MarkContactedAsync(_tenant.BusinessId, id, _tenant.UserId, dto?.Note));
         }
 
@@ -162,7 +170,7 @@ namespace AgendaApp.Controllers
         {
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
-            if (actual.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
+            if (await SinPermisoSobre(actual.UserId) is { } prohibido) return prohibido;
             return Map(await _reminders.RecordarAsync(_tenant.BusinessId, id, _tenant.UserId, dto.Channel));
         }
 
@@ -174,12 +182,15 @@ namespace AgendaApp.Controllers
             return Ok(new { created = await _reminders.GenerarAsync() });
         }
 
-        // Aprobar / rechazar turnos fuera de horario: el colaborador del turno o quien tenga flexibility.approve
+        // Aprobar / rechazar turnos fuera de horario: quien tenga flexibility.approve; el colaborador
+        // del turno solo si la empresa activó CollaboratorApprovesOutOfHours (lo decide el servicio)
         [HttpPost("{id:guid}/approve")]
         public async Task<ActionResult<AppointmentDto>> ApproveOutOfHours(Guid id)
         {
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
+            if (await _tenant.EsDuenoAjenoAsync(actual.UserId))
+                return StatusCode(403, new { message = "Los turnos del dueño solo los gestiona un dueño." });
             var puede = await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove);
             return Map(await _appointments.ApproveOutOfHoursAsync(id, _tenant.UserId, puede));
         }
@@ -189,6 +200,8 @@ namespace AgendaApp.Controllers
         {
             var actual = await _appointments.GetDetailAsync(_tenant.BusinessId, id);
             if (actual == null) return NotFound();
+            if (await _tenant.EsDuenoAjenoAsync(actual.UserId))
+                return StatusCode(403, new { message = "Los turnos del dueño solo los gestiona un dueño." });
             var puede = await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove);
             return Map(await _appointments.RejectOutOfHoursAsync(id, _tenant.UserId, puede));
         }
@@ -198,7 +211,7 @@ namespace AgendaApp.Controllers
             ServiceErrorType.NotFound => NotFound(r.Error),
             ServiceErrorType.BadRequest => BadRequest(r.Error),
             ServiceErrorType.Conflict => Conflict(r.Error),
-            ServiceErrorType.Unauthorized => Forbid(),
+            ServiceErrorType.Unauthorized => StatusCode(403, new { message = r.Error }),
             _ => Ok(r.Data)
         };
     }

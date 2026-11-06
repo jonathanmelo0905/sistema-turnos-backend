@@ -1,8 +1,10 @@
 using AgendaApp.Authorization;
+using AgendaApp.Context;
 using AgendaApp.Dtos;
 using AgendaApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgendaApp.Controllers
 {
@@ -13,9 +15,11 @@ namespace AgendaApp.Controllers
         private readonly IUserService _userService;
         private readonly ITenantGuard _tenant;
         private readonly IUserPhotoService _fotos;
+        private readonly AgendaProDbContext _context;
 
-        public UsersController(IUserService userService, ITenantGuard tenant, IUserPhotoService fotos)
+        public UsersController(IUserService userService, ITenantGuard tenant, IUserPhotoService fotos, AgendaProDbContext context)
         {
+            _context = context;
             _userService = userService;
             _tenant = tenant;
             _fotos = fotos;
@@ -78,6 +82,15 @@ namespace AgendaApp.Controllers
             if (id == _tenant.UserId && (!dto.Active || dto.Role != Context.Roles.Owner))
                 return BadRequest("No puedes desactivarte ni quitarte el rol de dueño a ti mismo.");
 
+            // Propietario principal: solo él cambia su contraseña; nadie lo desactiva ni le quita el rol
+            if (await EsPrincipalAsync(id) && id != _tenant.UserId)
+            {
+                if (!dto.Active || dto.Role != Context.Roles.Owner)
+                    return BadRequest("Es el propietario principal de la empresa: nadie puede desactivarlo ni quitarle el rol de dueño.");
+                if (!string.IsNullOrEmpty(dto.NewPassword))
+                    return BadRequest("La contraseña del propietario principal solo la cambia él mismo.");
+            }
+
             var result = await _userService.UpdateUserAsync(id, dto);
 
             return result.ErrorType switch
@@ -128,7 +141,13 @@ namespace AgendaApp.Controllers
             if (id == _tenant.UserId)
                 return BadRequest("No puedes desactivar tu propio usuario.");
 
+            if (await EsPrincipalAsync(id))
+                return BadRequest("Es el propietario principal de la empresa: nadie puede desactivarlo.");
+
             return await _userService.DeleteUserAsync(id) ? NoContent() : NotFound();
         }
+
+        private Task<bool> EsPrincipalAsync(Guid userId) =>
+            _context.Businesses.AnyAsync(b => b.BusinessId == _tenant.BusinessId && b.OwnerUserId == userId);
     }
 }

@@ -69,6 +69,7 @@ namespace AgendaApp.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             var target = dto.UserId ?? _tenant.UserId;
+            if (await _tenant.EsDuenoAjenoAsync(target)) return DuenoProtegido();
             if (!await _tenant.CanManageUserAsync(target)) return Forbid();
 
             var autoApprove = await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove);
@@ -82,6 +83,7 @@ namespace AgendaApp.Controllers
         {
             var t = await _timeOff.FindAsync(id);
             if (t == null || t.BusinessId != _tenant.BusinessId) return NotFound();
+            if (await _tenant.EsDuenoAjenoAsync(t.UserId)) return DuenoProtegido();
             return Map(await _timeOff.ReviewAsync(id, _tenant.UserId, true, dto?.Note));
         }
 
@@ -91,6 +93,7 @@ namespace AgendaApp.Controllers
         {
             var t = await _timeOff.FindAsync(id);
             if (t == null || t.BusinessId != _tenant.BusinessId) return NotFound();
+            if (await _tenant.EsDuenoAjenoAsync(t.UserId)) return DuenoProtegido();
             return Map(await _timeOff.ReviewAsync(id, _tenant.UserId, false, dto?.Note));
         }
 
@@ -100,14 +103,18 @@ namespace AgendaApp.Controllers
         {
             var t = await _timeOff.FindAsync(id);
             if (t == null || t.BusinessId != _tenant.BusinessId) return NotFound();
+            if (await _tenant.EsDuenoAjenoAsync(t.UserId)) return DuenoProtegido();
             if (!await _tenant.CanManageUserAsync(t.UserId) && !await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove))
                 return Forbid();
 
             return Map(await _timeOff.CancelAsync(id, _tenant.UserId));
         }
 
+        private ObjectResult DuenoProtegido() =>
+            StatusCode(403, new { message = "Las ausencias del dueño solo las gestiona un dueño." });
+
         private async Task<bool> PuedeVer(TimeOffRequest t) =>
-            await _tenant.CanManageUserAsync(t.UserId) || await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove);
+            await _tenant.CanViewUserAsync(t.UserId) || await _tenant.HasPermissionAsync(PermissionCodes.FlexibilityApprove);
 
         private ActionResult<TimeOffResponseDto> Map(ServiceResult<TimeOffResponseDto> r) => r.ErrorType switch
         {

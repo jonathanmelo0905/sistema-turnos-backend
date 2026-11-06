@@ -29,7 +29,7 @@ namespace AgendaApp.Controllers
         [HttpGet("schedule")]
         public async Task<IActionResult> GetWeeklySchedule(Guid userId)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
+            if (!await _tenant.CanViewUserAsync(userId))
                 return Forbid();
 
             return Ok(await _schedulesService.GetWeeklyScheduleAsync(userId));
@@ -42,8 +42,7 @@ namespace AgendaApp.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            if (!await _tenant.CanManageUserAsync(userId))
-                return Forbid();
+            if (await SinPermiso(userId) is { } prohibido) return prohibido;
 
             var result = await _schedulesService.SaveWeekAsync(userId, _tenant.BusinessId, dto);
             return result.ErrorType == ServiceErrorType.BadRequest ? BadRequest(result.Error) : Ok(result.Data);
@@ -52,18 +51,19 @@ namespace AgendaApp.Controllers
         [HttpPost("schedule")]
         public async Task<IActionResult> UpsertSchedule(Guid userId, [FromBody] UserScheduleDto dto)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
-                return Forbid();
+            if (await SinPermiso(userId) is { } prohibido) return prohibido;
 
-            await _schedulesService.UpsertScheduleAsync(userId, dto);
-            return Ok(new { message = "Horario actualizado correctamente." });
+            var result = await _schedulesService.UpsertScheduleAsync(userId, _tenant.BusinessId, dto);
+            return result.ErrorType == ServiceErrorType.BadRequest
+                ? BadRequest(result.Error)
+                : Ok(new { message = "Horario actualizado correctamente." });
         }
 
         // GET /api/users/{userId}/schedules/exceptions — desde hoy en adelante
         [HttpGet("exceptions")]
         public async Task<IActionResult> GetExceptions(Guid userId)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
+            if (!await _tenant.CanViewUserAsync(userId))
                 return Forbid();
 
             return Ok(await _schedulesService.GetExceptionsAsync(userId, DateTime.Today));
@@ -74,8 +74,7 @@ namespace AgendaApp.Controllers
         [HttpPost("exceptions")]
         public async Task<IActionResult> AddException(Guid userId, [FromBody] UserScheduleExceptionCreateDto dto)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
-                return Forbid();
+            if (await SinPermiso(userId) is { } prohibido) return prohibido;
 
             var gestiona = await _tenant.HasPermissionAsync(PermissionCodes.CollaboratorsManage);
             if (!gestiona)
@@ -98,8 +97,7 @@ namespace AgendaApp.Controllers
         [HttpDelete("exceptions/{id:guid}")]
         public async Task<IActionResult> DeleteException(Guid userId, Guid id)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
-                return Forbid();
+            if (await SinPermiso(userId) is { } prohibido) return prohibido;
 
             var result = await _schedulesService.DeleteExceptionAsync(userId, id);
 
@@ -108,6 +106,14 @@ namespace AgendaApp.Controllers
                 ServiceErrorType.NotFound => NotFound(result.Error),
                 _ => Ok(new { message = "Excepción eliminada correctamente." })
             };
+        }
+
+        // Gestionar a otra persona: collaborators.manage; al dueño solo otro dueño
+        private async Task<IActionResult?> SinPermiso(Guid userId)
+        {
+            if (await _tenant.CanManageUserAsync(userId)) return null;
+            if (await _tenant.EsDuenoAjenoAsync(userId)) return StatusCode(403, new { message = "El horario del dueño solo lo cambia un dueño." });
+            return Forbid();
         }
     }
 }

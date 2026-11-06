@@ -17,8 +17,13 @@ namespace AgendaApp.Authorization
         Task<bool> ServiceInBusinessAsync(Guid serviceId);
         Task<bool> CategoryInBusinessAsync(Guid categoryId);
         Task<bool> HasPermissionAsync(string permissionCode);
-        // Mismo negocio y (es él mismo, es Owner o tiene collaborators.manage)
+        // Mismo negocio y (es él mismo, es Owner o tiene collaborators.manage).
+        // Solo otro Owner gestiona a un Owner (horario, servicios, ausencias y turnos).
         Task<bool> CanManageUserAsync(Guid userId);
+        // Solo lectura: mismo negocio y (es él mismo o tiene collaborators.manage), incluido el Owner.
+        Task<bool> CanViewUserAsync(Guid userId);
+        // El usuario es un Owner distinto de quien llama y quien llama no es Owner.
+        Task<bool> EsDuenoAjenoAsync(Guid userId);
     }
 
     public class TenantGuard : ITenantGuard
@@ -60,9 +65,28 @@ namespace AgendaApp.Authorization
 
         public async Task<bool> CanManageUserAsync(Guid userId)
         {
+            var rol = await RolEnEmpresaAsync(userId);
+            if (rol == null) return false;
+            if (userId == UserId) return true;
+            if (rol == Roles.Owner && !IsOwner) return false;
+            return await HasPermissionAsync(PermissionCodes.CollaboratorsManage);
+        }
+
+        public async Task<bool> CanViewUserAsync(Guid userId)
+        {
             if (!await UserInBusinessAsync(userId)) return false;
             return userId == UserId || await HasPermissionAsync(PermissionCodes.CollaboratorsManage);
         }
+
+        public async Task<bool> EsDuenoAjenoAsync(Guid userId)
+        {
+            if (IsOwner || userId == UserId) return false;
+            return await RolEnEmpresaAsync(userId) == Roles.Owner;
+        }
+
+        private Task<string?> RolEnEmpresaAsync(Guid userId) =>
+            _context.Users.Where(u => u.UserId == userId && u.BusinessId == BusinessId)
+                .Select(u => (string?)u.Role).FirstOrDefaultAsync();
 
         private Guid? ParseClaim(string type) =>
             Guid.TryParse(_user?.FindFirst(type)?.Value, out var id) ? id : null;

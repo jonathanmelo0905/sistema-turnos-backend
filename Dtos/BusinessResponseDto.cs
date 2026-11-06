@@ -16,6 +16,8 @@ namespace AgendaApp.Dtos
         public string? Facebook { get; set; }
         public string? TikTok { get; set; }
         public bool AllowOutOfHoursBooking { get; set; }
+        public bool CollaboratorApprovesOutOfHours { get; set; }
+        public Guid? OwnerUserId { get; set; }   // propietario principal
         public string? Slug { get; set; }
         public int CancelLimitHours { get; set; }
         public int MinAdvanceMinutes { get; set; }

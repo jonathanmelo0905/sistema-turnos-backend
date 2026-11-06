@@ -32,6 +32,7 @@ namespace AgendaApp.Services
                     PhotoUrl = u.PhotoUrl,
                     Role = u.Role,
                     Active = u.Active,
+                    IsPrincipal = u.Business.OwnerUserId == u.UserId,
                     CreatedAt = u.CreatedAt
                 })
                 .ToListAsync();
@@ -39,7 +40,7 @@ namespace AgendaApp.Services
 
         public async Task<UserResponseDto?> GetUserAsync(Guid id)
         {
-            var user = await _context.Users.FindAsync(id);
+            var user = await _context.Users.Include(u => u.Business).FirstOrDefaultAsync(u => u.UserId == id);
             return user == null ? null : ToDto(user);
         }
 
@@ -143,6 +144,7 @@ namespace AgendaApp.Services
             PhotoUrl = user.PhotoUrl,
             Role = user.Role,
             Active = user.Active,
+            IsPrincipal = user.Business != null && user.Business.OwnerUserId == user.UserId,
             CreatedAt = user.CreatedAt
         };
     }

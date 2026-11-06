@@ -548,14 +548,22 @@ namespace AgendaApp.Services
             return ServiceResult<AppointmentDto>.Ok((await GetDetailAsync(businessId, id))!);
         }
 
+        // El colaborador decide sobre sus propios turnos fuera de horario solo si la empresa lo permite
+        private async Task<bool> PropioFueraDeHorarioAsync(Appointment appointment, Guid callerId) =>
+            appointment.UserId == callerId && await _context.Businesses.AsNoTracking()
+                .Where(b => b.BusinessId == appointment.BusinessId)
+                .Select(b => b.CollaboratorApprovesOutOfHours).FirstOrDefaultAsync();
+
         public async Task<ServiceResult<AppointmentDto>> ApproveOutOfHoursAsync(Guid id, Guid callerId, bool callerCanActOnBehalf)
         {
             var appointment = await _context.Appointments.FindAsync(id);
             if (appointment == null)
                 return ServiceResult<AppointmentDto>.NotFound("No se encontró la cita especificada.");
 
-            if (appointment.UserId != callerId && !callerCanActOnBehalf)
-                return ServiceResult<AppointmentDto>.Unauthorized("No tienes permiso para aprobar esta cita.");
+            if (!callerCanActOnBehalf && !await PropioFueraDeHorarioAsync(appointment, callerId))
+                return ServiceResult<AppointmentDto>.Unauthorized(appointment.UserId == callerId
+                    ? "Tus turnos fuera de horario los aprueba el dueño o quien tenga el permiso de flexibilidad."
+                    : "No tienes permiso para aprobar esta cita.");
 
             if (appointment.Status != AppointmentStatus.PendingOutOfHours)
                 return ServiceResult<AppointmentDto>.BadRequest("La cita no está pendiente de aprobación por horario.");
@@ -574,8 +582,10 @@ namespace AgendaApp.Services
             if (appointment == null)
                 return ServiceResult<AppointmentDto>.NotFound("No se encontró la cita especificada.");
 
-            if (appointment.UserId != callerId && !callerCanActOnBehalf)
-                return ServiceResult<AppointmentDto>.Unauthorized("No tienes permiso para rechazar esta cita.");
+            if (!callerCanActOnBehalf && !await PropioFueraDeHorarioAsync(appointment, callerId))
+                return ServiceResult<AppointmentDto>.Unauthorized(appointment.UserId == callerId
+                    ? "Tus turnos fuera de horario los aprueba el dueño o quien tenga el permiso de flexibilidad."
+                    : "No tienes permiso para rechazar esta cita.");
 
             if (appointment.Status != AppointmentStatus.PendingOutOfHours)
                 return ServiceResult<AppointmentDto>.BadRequest("La cita no está pendiente de aprobación por horario.");

@@ -90,6 +90,13 @@ namespace AgendaApp.Context
         // del colaborador en estado "PendingOutOfHours", sujetas a aprobación.
         public bool AllowOutOfHoursBooking { get; set; } = false;
 
+        // Si es true, el colaborador aprueba o rechaza sus propios turnos fuera de horario;
+        // si no, solo quien tiene flexibility.approve (Fase 9 T7).
+        public bool CollaboratorApprovesOutOfHours { get; set; } = false;
+
+        // Propietario principal (quien registró la empresa): ningún otro Owner lo desactiva ni le quita el rol.
+        public Guid? OwnerUserId { get; set; }
+
         // 🔗 Relación con Users
         public ICollection<User> Users { get; set; } = new List<User>();
 

@@ -200,6 +200,9 @@ namespace AgendaApp.Migrations
                     b.Property<bool>("ClosedOnHolidays")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("CollaboratorApprovesOutOfHours")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("CoverUrl")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
@@ -241,6 +244,12 @@ namespace AgendaApp.Migrations
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("varchar(150)");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid?>("OwnerUserId"), "utf8mb4");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(30)

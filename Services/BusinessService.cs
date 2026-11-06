@@ -85,6 +85,7 @@ namespace AgendaApp.Services
             business.Facebook = Clean(dto.Facebook);
             business.TikTok = Clean(dto.TikTok);
             business.AllowOutOfHoursBooking = dto.AllowOutOfHoursBooking;
+            business.CollaboratorApprovesOutOfHours = dto.CollaboratorApprovesOutOfHours;
             business.CancelLimitHours = dto.CancelLimitHours;
             business.MinAdvanceMinutes = dto.MinAdvanceMinutes;
             business.BufferMinutes = dto.BufferMinutes;
@@ -123,6 +124,8 @@ namespace AgendaApp.Services
             Facebook = business.Facebook,
             TikTok = business.TikTok,
             AllowOutOfHoursBooking = business.AllowOutOfHoursBooking,
+            CollaboratorApprovesOutOfHours = business.CollaboratorApprovesOutOfHours,
+            OwnerUserId = business.OwnerUserId,
             Slug = business.Slug,
             CancelLimitHours = business.CancelLimitHours,
             MinAdvanceMinutes = business.MinAdvanceMinutes,
@@ -133,6 +136,7 @@ namespace AgendaApp.Services
             CreatedAt = business.CreatedAt,
             Users = business.Users.Select(u => new UserResponseDto
             {
+                IsPrincipal = business.OwnerUserId == u.UserId,
                 UserId = u.UserId,
                 Name = u.Name,
                 Email = u.Email,

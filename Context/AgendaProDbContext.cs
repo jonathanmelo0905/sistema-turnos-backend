@@ -125,6 +125,8 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Business>().HasIndex(b => b.Slug).IsUnique().HasDatabaseName("IX_Businesses_Slug");
             modelBuilder.Entity<Business>().Property(b => b.CancelLimitHours).HasDefaultValue(2);
             modelBuilder.Entity<Business>().Property(b => b.Status).HasDefaultValue(BusinessStatus.Approved);
+            // Sin FK a Users (evita el ciclo Business ↔ User); se valida en UsersController
+            modelBuilder.Entity<Business>().Property(b => b.OwnerUserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
             modelBuilder.Entity<Client>().HasIndex(c => c.AccessToken).HasDatabaseName("IX_Clients_AccessToken");
 
             foreach (var prop in new[] { "ReviewId", "BusinessId", "AppointmentId", "ClientId", "UserId", "ServiceId", "RepliedByUserId" })

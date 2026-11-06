@@ -10,6 +10,7 @@ namespace AgendaApp.Dtos
         public string? PhotoUrl { get; set; }
         public string Role { get; set; } = null!;
         public bool Active { get; set; }
+        public bool IsPrincipal { get; set; }   // propietario principal de la empresa
         public DateTime CreatedAt { get; set; }
     }
 }

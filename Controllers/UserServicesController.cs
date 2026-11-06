@@ -25,7 +25,7 @@ namespace AgendaApp.Controllers
         [HttpGet]
         public async Task<IActionResult> GetUserServices(Guid userId)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
+            if (!await _tenant.CanViewUserAsync(userId))
                 return Forbid();
 
             return Ok(await _userServicesService.GetUserServicesAsync(userId));
@@ -34,8 +34,7 @@ namespace AgendaApp.Controllers
         [HttpPost]
         public async Task<IActionResult> AssignServices(Guid userId, [FromBody] AssignUserServicesDto dto)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
-                return Forbid();
+            if (await SinPermiso(userId) is { } prohibido) return prohibido;
 
             foreach (var serviceId in dto.ServiceIds)
                 if (!await _tenant.ServiceInBusinessAsync(serviceId))
@@ -53,8 +52,7 @@ namespace AgendaApp.Controllers
         [HttpDelete("{serviceId:guid}")]
         public async Task<IActionResult> RemoveUserService(Guid userId, Guid serviceId)
         {
-            if (!await _tenant.CanManageUserAsync(userId))
-                return Forbid();
+            if (await SinPermiso(userId) is { } prohibido) return prohibido;
 
             var result = await _userServicesService.RemoveUserServiceAsync(userId, serviceId);
 
@@ -63,6 +61,14 @@ namespace AgendaApp.Controllers
                 ServiceErrorType.NotFound => NotFound(result.Error),
                 _ => Ok(new { message = "Servicio quitado correctamente." })
             };
+        }
+
+        // Gestionar a otra persona: collaborators.manage; al dueño solo otro dueño
+        private async Task<IActionResult?> SinPermiso(Guid userId)
+        {
+            if (await _tenant.CanManageUserAsync(userId)) return null;
+            if (await _tenant.EsDuenoAjenoAsync(userId)) return StatusCode(403, new { message = "Los servicios del dueño solo los cambia un dueño." });
+            return Forbid();
         }
     }
 }

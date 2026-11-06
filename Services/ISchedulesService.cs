@@ -6,7 +6,7 @@ namespace AgendaApp.Services
     {
         Task<List<UserScheduleResponseDto>> GetWeeklyScheduleAsync(Guid userId);
         Task<ServiceResult<List<UserScheduleResponseDto>>> SaveWeekAsync(Guid userId, Guid businessId, WeeklyScheduleDto dto);
-        Task UpsertScheduleAsync(Guid userId, UserScheduleDto dto);
+        Task<ServiceResult<bool>> UpsertScheduleAsync(Guid userId, Guid businessId, UserScheduleDto dto);
         Task<List<UserScheduleExceptionResponseDto>> GetExceptionsAsync(Guid userId, DateTime from);
         Task<ServiceResult<UserScheduleExceptionResponseDto>> AddExceptionAsync(Guid userId, Guid businessId, UserScheduleExceptionCreateDto dto);
         Task<ServiceResult<bool>> DeleteExceptionAsync(Guid userId, Guid exceptionId);

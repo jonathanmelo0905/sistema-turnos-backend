@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace AgendaApp.Dtos
 {
@@ -14,10 +14,8 @@ namespace AgendaApp.Dtos
         [Required]
         public bool IsAvailable { get; set; } = true;
 
-        [Required]
+        // Obligatorias solo si el día es trabajado (lo valida SchedulesService)
         public string? StartTime { get; set; } // Hora de inicio
-
-        [Required]
         public string? EndTime { get; set; } // Hora de fin
 
         public string? BreakStart { get; set; } // Inicio del descanso

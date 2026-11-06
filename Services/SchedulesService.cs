@@ -48,30 +48,8 @@ namespace AgendaApp.Services
 
             foreach (var d in dto.Days.Where(d => d.IsAvailable))
             {
-                var dia = Dias[d.DayOfWeek];
-                if (!TryTime(d.StartTime, out var ini) || !TryTime(d.EndTime, out var fin) || ini >= fin)
-                    return ServiceResult<List<UserScheduleResponseDto>>.BadRequest($"El {dia}: la salida debe ser después de la entrada.");
-
-                if (!empresa.TryGetValue(d.DayOfWeek, out var b) || !b.IsOpen
-                    || !TryTime(b.OpenTime, out var abre) || !TryTime(b.CloseTime, out var cierra))
-                    return ServiceResult<List<UserScheduleResponseDto>>.BadRequest($"El {dia} la empresa no atiende; desactiva ese día.");
-
-                if (ini < abre || fin > cierra)
-                    return ServiceResult<List<UserScheduleResponseDto>>.BadRequest(
-                        $"El {dia} tu jornada debe estar dentro del horario de la empresa ({Fmt(abre)}–{Fmt(cierra)}).");
-
-                var tieneInicioPausa = !string.IsNullOrWhiteSpace(d.BreakStart);
-                var tieneFinPausa = !string.IsNullOrWhiteSpace(d.BreakEnd);
-                if (tieneInicioPausa != tieneFinPausa)
-                    return ServiceResult<List<UserScheduleResponseDto>>.BadRequest($"El {dia}: indica inicio y fin de la pausa, o ninguno.");
-
-                if (tieneInicioPausa)
-                {
-                    if (!TryTime(d.BreakStart, out var p1) || !TryTime(d.BreakEnd, out var p2) || p1 >= p2)
-                        return ServiceResult<List<UserScheduleResponseDto>>.BadRequest($"El {dia}: el fin de la pausa debe ser después del inicio.");
-                    if (p1 <= ini || p2 >= fin)
-                        return ServiceResult<List<UserScheduleResponseDto>>.BadRequest($"El {dia}: la pausa debe quedar dentro de la jornada.");
-                }
+                var error = ValidarDia(d, empresa);
+                if (error != null) return ServiceResult<List<UserScheduleResponseDto>>.BadRequest(error);
             }
 
             var existentes = await _context.UserSchedules.Where(s => s.UserId == userId).ToListAsync();
@@ -95,9 +73,26 @@ namespace AgendaApp.Services
             return ServiceResult<List<UserScheduleResponseDto>>.Ok(await GetWeeklyScheduleAsync(userId));
         }
 
-        // Compatibilidad: guardado de un solo día (sin validación de empresa)
-        public async Task UpsertScheduleAsync(Guid userId, UserScheduleDto dto)
+        // Guardado de un solo día, con las mismas validaciones que la semana completa
+        public async Task<ServiceResult<bool>> UpsertScheduleAsync(Guid userId, Guid businessId, UserScheduleDto dto)
         {
+            if (dto.DayOfWeek is < 1 or > 7)
+                return ServiceResult<bool>.BadRequest("El día debe ir de 1 (lunes) a 7 (domingo).");
+
+            var dia = new ScheduleDayDto
+            {
+                DayOfWeek = dto.DayOfWeek, IsAvailable = dto.IsAvailable,
+                StartTime = dto.StartTime, EndTime = dto.EndTime, BreakStart = dto.BreakStart, BreakEnd = dto.BreakEnd
+            };
+            if (dia.IsAvailable)
+            {
+                var empresa = await _context.BusinessSchedules.AsNoTracking()
+                    .Where(b => b.BusinessId == businessId && b.DayOfWeek == dto.DayOfWeek)
+                    .ToDictionaryAsync(b => b.DayOfWeek);
+                var error = ValidarDia(dia, empresa);
+                if (error != null) return ServiceResult<bool>.BadRequest(error);
+            }
+
             var existing = await _context.UserSchedules
                 .FirstOrDefaultAsync(s => s.UserId == userId && s.DayOfWeek == dto.DayOfWeek);
 
@@ -107,14 +102,44 @@ namespace AgendaApp.Services
                 _context.UserSchedules.Add(existing);
             }
 
-            existing.IsAvailable = dto.IsAvailable;
-            existing.StartTime = dto.StartTime;
-            existing.EndTime = dto.EndTime;
-            existing.BreakStart = dto.BreakStart;
-            existing.BreakEnd = dto.BreakEnd;
+            existing.IsAvailable = dia.IsAvailable;
+            existing.StartTime = dia.IsAvailable ? Norm(dia.StartTime) : null;
+            existing.EndTime = dia.IsAvailable ? Norm(dia.EndTime) : null;
+            existing.BreakStart = dia.IsAvailable ? Norm(dia.BreakStart) : null;
+            existing.BreakEnd = dia.IsAvailable ? Norm(dia.BreakEnd) : null;
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Horario semanal actualizado para usuario {UserId}, día {DayOfWeek}.", userId, dto.DayOfWeek);
+            return ServiceResult<bool>.Ok(true);
+        }
+
+        // Un día trabajado: jornada válida, dentro del horario de la empresa y con la pausa dentro. null = sin errores.
+        private static string? ValidarDia(ScheduleDayDto d, IReadOnlyDictionary<byte, BusinessSchedule> empresa)
+        {
+            var dia = Dias[d.DayOfWeek];
+            if (!TryTime(d.StartTime, out var ini) || !TryTime(d.EndTime, out var fin) || ini >= fin)
+                return $"El {dia}: la salida debe ser después de la entrada.";
+
+            if (!empresa.TryGetValue(d.DayOfWeek, out var b) || !b.IsOpen
+                || !TryTime(b.OpenTime, out var abre) || !TryTime(b.CloseTime, out var cierra))
+                return $"El {dia} la empresa no atiende; desactiva ese día.";
+
+            if (ini < abre || fin > cierra)
+                return $"El {dia} tu jornada debe estar dentro del horario de la empresa ({Fmt(abre)}–{Fmt(cierra)}).";
+
+            var tieneInicioPausa = !string.IsNullOrWhiteSpace(d.BreakStart);
+            var tieneFinPausa = !string.IsNullOrWhiteSpace(d.BreakEnd);
+            if (tieneInicioPausa != tieneFinPausa)
+                return $"El {dia}: indica inicio y fin de la pausa, o ninguno.";
+
+            if (tieneInicioPausa)
+            {
+                if (!TryTime(d.BreakStart, out var p1) || !TryTime(d.BreakEnd, out var p2) || p1 >= p2)
+                    return $"El {dia}: el fin de la pausa debe ser después del inicio.";
+                if (p1 <= ini || p2 >= fin)
+                    return $"El {dia}: la pausa debe quedar dentro de la jornada.";
+            }
+            return null;
         }
 
         public async Task<List<UserScheduleExceptionResponseDto>> GetExceptionsAsync(Guid userId, DateTime from)
