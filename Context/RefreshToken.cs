@@ -1,8 +1,11 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgendaApp.Context
 {
+    // Token guarda el hash SHA-256 del refresh token (el valor real solo lo tiene el cliente).
+    [Index(nameof(Token))]
     public class RefreshToken
     {
         [Key]

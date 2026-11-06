@@ -6,7 +6,8 @@ namespace AgendaApp.Services
         NotFound,
         Conflict,
         BadRequest,
-        Unauthorized
+        Unauthorized,
+        TooManyRequests
     }
 
     public class ServiceResult<T>
@@ -15,12 +16,15 @@ namespace AgendaApp.Services
         public T? Data { get; init; }
         public string? Error { get; init; }
         public ServiceErrorType ErrorType { get; init; } = ServiceErrorType.None;
+        // Solo con TooManyRequests: segundos que faltan para poder intentarlo de nuevo.
+        public int? RetryAfterSeconds { get; init; }
 
         public static ServiceResult<T> Ok(T data) => new() { Data = data, ErrorType = ServiceErrorType.None };
         public static ServiceResult<T> NotFound(string message) => new() { Error = message, ErrorType = ServiceErrorType.NotFound };
         public static ServiceResult<T> Conflict(string message) => new() { Error = message, ErrorType = ServiceErrorType.Conflict };
         public static ServiceResult<T> BadRequest(string message) => new() { Error = message, ErrorType = ServiceErrorType.BadRequest };
         public static ServiceResult<T> Unauthorized(string message) => new() { Error = message, ErrorType = ServiceErrorType.Unauthorized };
+        public static ServiceResult<T> TooManyRequests(string message, int retryAfterSeconds) => new() { Error = message, ErrorType = ServiceErrorType.TooManyRequests, RetryAfterSeconds = retryAfterSeconds };
     }
 
     public static class ServiceResult

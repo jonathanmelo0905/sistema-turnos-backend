@@ -35,6 +35,7 @@ builder.Services.AddCors(options =>
 // Los usuarios con sesión (panel del negocio) no se limitan.
 var limiteLectura = builder.Configuration.GetValue("RateLimit:LecturaPorMinuto", 120);
 var limiteEscritura = builder.Configuration.GetValue("RateLimit:EscrituraPorMinuto", 20);
+var limiteAcceso = builder.Configuration.GetValue("RateLimit:AccesoPorMinuto", 20);
 builder.Services.AddRateLimiter(options =>
 {
     RateLimitPartition<string> PorIp(HttpContext ctx, string politica, int limite) =>
@@ -49,6 +50,14 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy(RateLimitPolicies.PublicoLectura, ctx => PorIp(ctx, RateLimitPolicies.PublicoLectura, limiteLectura));
     options.AddPolicy(RateLimitPolicies.PublicoEscritura, ctx => PorIp(ctx, RateLimitPolicies.PublicoEscritura, limiteEscritura));
+    // Login y refresh: siempre por IP (el refresh llega con el JWT vencido o sin él)
+    options.AddPolicy(RateLimitPolicies.Acceso, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        $"{RateLimitPolicies.Acceso}:{ctx.Connection.RemoteIpAddress}", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = limiteAcceso,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
 
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (context, token) =>

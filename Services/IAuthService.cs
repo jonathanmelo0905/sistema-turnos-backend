@@ -20,6 +20,6 @@ namespace AgendaApp.Services
         Task<ServiceResult<RegisterBusinessResultDto>> RegisterBusinessAsync(RegisterBusinessDto dto);
         Task<ServiceResult<AuthResponseDto>> LoginAsync(LoginDto dto);
         Task<ServiceResult<RefreshResultDto>> RefreshTokenAsync(string refreshToken);
-        Task<ServiceResult<bool>> LogoutAsync(string refreshToken);
+        Task<ServiceResult<bool>> LogoutAsync(Guid userId, string refreshToken);
     }
 }

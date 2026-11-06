@@ -5,5 +5,6 @@ namespace AgendaApp.Middleware
     {
         public const string PublicoLectura = "publico-lectura";
         public const string PublicoEscritura = "publico-escritura";
+        public const string Acceso = "acceso"; // Auth/login y Auth/refresh
     }
 }

@@ -33,6 +33,10 @@ namespace AgendaApp.Context
         // Borrado lógico: un usuario inactivo no puede iniciar sesión ni recibir turnos.
         public bool Active { get; set; } = true;
 
+        // Bloqueo por intentos fallidos de login: desde el 5.º, espera creciente (LockedUntil en UTC).
+        public int FailedLogins { get; set; }
+        public DateTime? LockedUntil { get; set; }
+
         [Required]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

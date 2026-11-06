@@ -66,9 +66,18 @@ namespace AgendaApp.Controllers
         // 🔐 LOGIN
         [HttpPost("login")]
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.Acceso)]
         public async Task<ActionResult<AuthResponseDto>> Login(LoginDto dto)
         {
             var result = await _authService.LoginAsync(dto);
+
+            // Cuenta en pausa por intentos fallidos: 429 con el tiempo de espera
+            if (result.ErrorType == ServiceErrorType.TooManyRequests)
+            {
+                Response.Headers.RetryAfter = result.RetryAfterSeconds.ToString();
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { message = result.Error, retryAfterSeconds = result.RetryAfterSeconds, locked = true });
+            }
 
             if (result.ErrorType == ServiceErrorType.Unauthorized)
                 return Unauthorized(result.Error);
@@ -79,6 +88,7 @@ namespace AgendaApp.Controllers
         // ♻️ RENOVAR TOKEN
         [HttpPost("refresh")]
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.Acceso)]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
         {
             var result = await _authService.RefreshTokenAsync(dto.RefreshToken);
@@ -99,7 +109,9 @@ namespace AgendaApp.Controllers
         [Authorize]
         public async Task<IActionResult> Logout([FromBody] RefreshTokenDto dto)
         {
-            var result = await _authService.LogoutAsync(dto.RefreshToken);
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+            if (!Guid.TryParse(claim, out var userId)) return Unauthorized();
+            var result = await _authService.LogoutAsync(userId, dto.RefreshToken);
 
             if (result.ErrorType == ServiceErrorType.NotFound)
                 return NotFound(result.Error);

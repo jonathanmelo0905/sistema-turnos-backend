@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace AgendaApp.Services
@@ -130,13 +131,65 @@ namespace AgendaApp.Services
             catch (Exception ex) { _logger.LogError(ex, "No se pudo avisar al operador del registro de {BusinessId}.", b.BusinessId); }
         }
 
+        // Desde el 5.º intento fallido seguido la cuenta espera 1, 2, 4, 8 y luego 15 minutos como máximo.
+        private const int IntentosAntesDeBloquear = 5;
+        private const int BloqueoMaximoMinutos = 15;
+
+        // Hash ficticio con el mismo costo que los reales: si el correo no existe se verifica contra él
+        // para que la respuesta tarde lo mismo y no revele qué correos son del personal.
+        private static readonly string HashFicticio = BCrypt.Net.BCrypt.HashPassword("hash-ficticio-" + Guid.NewGuid());
+
+        private static int MinutosDeBloqueo(int fallidos) =>
+            Math.Min(BloqueoMaximoMinutos, 1 << Math.Min(fallidos - IntentosAntesDeBloquear, 4));
+
+        private static ServiceResult<AuthResponseDto> Bloqueada(DateTime hasta)
+        {
+            var segundos = Math.Max(1, (int)Math.Ceiling((hasta - DateTime.UtcNow).TotalSeconds));
+            var minutos = (int)Math.Ceiling(segundos / 60.0);
+            var espera = minutos <= 1 ? "1 minuto" : $"{minutos} minutos";
+            return ServiceResult<AuthResponseDto>.TooManyRequests(
+                $"Por seguridad pausamos el acceso a esta cuenta tras varios intentos fallidos. Intenta de nuevo en {espera}.", segundos);
+        }
+
         public async Task<ServiceResult<AuthResponseDto>> LoginAsync(LoginDto dto)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
-            if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+            var email = (dto.Email ?? "").Trim().ToLowerInvariant();
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+            if (user?.LockedUntil is DateTime hasta && hasta > DateTime.UtcNow)
             {
-                _logger.LogWarning("Intento de login fallido para el email {Email}.", dto.Email);
-                return ServiceResult<AuthResponseDto>.Unauthorized("Email o contraseña incorrectos");
+                _logger.LogWarning("Login de {UserId} rechazado: cuenta en pausa hasta {Hasta:u}.", user.UserId, hasta);
+                return Bloqueada(hasta);
+            }
+
+            var claveOk = BCrypt.Net.BCrypt.Verify(dto.Password ?? "", user?.PasswordHash ?? HashFicticio);
+            if (user == null || !claveOk)
+            {
+                _logger.LogWarning("Intento de login fallido para el email {Email}.", email);
+                if (user == null)
+                    return ServiceResult<AuthResponseDto>.Unauthorized("Email o contraseña incorrectos");
+
+                user.FailedLogins++;
+                if (user.FailedLogins >= IntentosAntesDeBloquear)
+                {
+                    user.LockedUntil = DateTime.UtcNow.AddMinutes(MinutosDeBloqueo(user.FailedLogins));
+                    await _context.SaveChangesAsync();
+                    _logger.LogWarning("Cuenta {UserId} en pausa hasta {Hasta:u} tras {Fallidos} intentos fallidos.", user.UserId, user.LockedUntil, user.FailedLogins);
+                    return Bloqueada(user.LockedUntil.Value);
+                }
+                await _context.SaveChangesAsync();
+                var quedan = IntentosAntesDeBloquear - user.FailedLogins;
+                var textoQuedan = quedan == 1 ? "Te queda 1 intento" : $"Te quedan {quedan} intentos";
+                return ServiceResult<AuthResponseDto>.Unauthorized(quedan <= 2
+                    ? $"Email o contraseña incorrectos. {textoQuedan} antes de que pausemos el acceso unos minutos."
+                    : "Email o contraseña incorrectos");
+            }
+
+            if (user.FailedLogins != 0 || user.LockedUntil != null)
+            {
+                user.FailedLogins = 0;
+                user.LockedUntil = null;
+                await _context.SaveChangesAsync();
             }
 
             if (!user.Active)
@@ -165,16 +218,17 @@ namespace AgendaApp.Services
                 Role = user.Role,
                 BusinessId = user.BusinessId,
                 UserId = user.UserId,
-                RefreshToken = refreshToken.Token,
+                RefreshToken = refreshToken.Valor,
                 RefreshTokenExpiration = refreshToken.Expiration
             });
         }
 
         public async Task<ServiceResult<RefreshResultDto>> RefreshTokenAsync(string refreshToken)
         {
+            var hash = HashToken(refreshToken);
             var existingToken = await _context.RefreshTokens
                 .Include(r => r.User)
-                .FirstOrDefaultAsync(r => r.Token == refreshToken && !r.Revoked);
+                .FirstOrDefaultAsync(r => r.Token == hash && !r.Revoked);
 
             if (existingToken == null || existingToken.Expiration < DateTime.UtcNow || !existingToken.User.Active
                 || await EstadoEmpresaAsync(existingToken.User.BusinessId) is var estado
@@ -196,14 +250,16 @@ namespace AgendaApp.Services
             return ServiceResult<RefreshResultDto>.Ok(new RefreshResultDto
             {
                 Token = newJwt,
-                RefreshToken = newRefresh.Token,
+                RefreshToken = newRefresh.Valor,
                 RefreshTokenExpiration = newRefresh.Expiration
             });
         }
 
-        public async Task<ServiceResult<bool>> LogoutAsync(string refreshToken)
+        // Solo revoca refresh tokens del propio usuario: con el de otro responde igual que si no existiera
+        public async Task<ServiceResult<bool>> LogoutAsync(Guid userId, string refreshToken)
         {
-            var token = await _context.RefreshTokens.FirstOrDefaultAsync(r => r.Token == refreshToken);
+            var hash = HashToken(refreshToken);
+            var token = await _context.RefreshTokens.FirstOrDefaultAsync(r => r.Token == hash && r.UserId == userId);
             if (token == null)
                 return ServiceResult.NotFound("Refresh token no encontrado.");
 
@@ -239,13 +295,19 @@ namespace AgendaApp.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        private async Task<RefreshToken> CreateRefreshTokenAsync(User user)
+        private static string HashToken(string? token) =>
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token ?? ""))).ToLowerInvariant();
+
+        // En la base queda solo el hash; el valor (32 bytes aleatorios) se entrega una vez al cliente
+        private async Task<(string Valor, DateTime Expiration)> CreateRefreshTokenAsync(User user)
         {
+            var valor = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+                .TrimEnd('=').Replace('+', '-').Replace('/', '_');
             var refresh = new RefreshToken
             {
                 TokenId = Guid.NewGuid(),
                 UserId = user.UserId,
-                Token = Guid.NewGuid().ToString(),
+                Token = HashToken(valor),
                 Expiration = DateTime.UtcNow.AddDays(7),
                 Revoked = false
             };
@@ -253,7 +315,7 @@ namespace AgendaApp.Services
             _context.RefreshTokens.Add(refresh);
             await _context.SaveChangesAsync();
 
-            return refresh;
+            return (valor, refresh.Expiration);
         }
     }
 }
