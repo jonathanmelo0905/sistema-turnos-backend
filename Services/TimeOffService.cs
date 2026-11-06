@@ -79,7 +79,10 @@ namespace AgendaApp.Services
                     Status = a.Status,
                     ClientName = a.Client.Name,
                     ClientPhone = a.Client.Phone,
-                    ServiceName = a.Service.Name
+                    ServiceName = a.Service.Name,
+                    UserId = a.UserId,
+                    CreatedByUserId = a.CreatedByUserId,
+                    ClientIsNewFromBooking = a.Client.CreatedAt == a.CreatedAt
                 })
                 .ToListAsync();
         }

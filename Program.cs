@@ -109,6 +109,7 @@ builder.Services.AddHostedService<ReminderJob>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();
+builder.Services.AddScoped<ContactoClienteFilter>();
 
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IPermissionCache, PermissionCache>();

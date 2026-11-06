@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace AgendaApp.Dtos
 {
@@ -33,6 +34,12 @@ namespace AgendaApp.Dtos
         public DateTime? ContactedAt { get; set; }
         public DateTime? ReminderSentAt { get; set; }
         public string? ReminderChannel { get; set; }
+
+        // true: quien consulta no puede ver el contacto (ClientPhone/ClientEmail vienen enmascarados).
+        // Lo decide ContactoClienteFilter con los dos campos internos de abajo.
+        public bool ClientContactHidden { get; set; }
+        [JsonIgnore] public Guid? CreatedByUserId { get; set; }
+        [JsonIgnore] public bool ClientIsNewFromBooking { get; set; }
     }
 
     public class AppointmentReminderDto

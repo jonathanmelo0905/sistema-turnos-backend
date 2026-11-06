@@ -38,6 +38,11 @@ namespace AgendaApp.Dtos
         public string? ClientName { get; set; }
         public string? ClientPhone { get; set; }
         public string? ServiceName { get; set; }
+        // Ver AppointmentDto: contacto enmascarado según quién consulta (ContactoClienteFilter)
+        public bool ClientContactHidden { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public Guid UserId { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public Guid? CreatedByUserId { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public bool ClientIsNewFromBooking { get; set; }
     }
 
     public class TimeOffResponseDto

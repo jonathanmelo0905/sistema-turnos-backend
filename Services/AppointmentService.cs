@@ -74,7 +74,10 @@ namespace AgendaApp.Services
 
         // ---------------------------------------------------------------- Reservar
 
-        public async Task<ServiceResult<AppointmentDto>> BookAsync(Guid businessId, Guid? byUserId, string source, AppointmentBookDto dto)
+        // actualizarContacto: si el "cliente nuevo" coincide con uno existente, se le actualiza el teléfono
+        // o el correo. Desde el panel solo con clients.contacts.view (si no, cualquiera podría cambiarle
+        // el número a un cliente y quedarse con sus avisos).
+        public async Task<ServiceResult<AppointmentDto>> BookAsync(Guid businessId, Guid? byUserId, string source, AppointmentBookDto dto, bool actualizarContacto = true)
         {
             var business = await _context.Businesses.AsNoTracking().FirstOrDefaultAsync(b => b.BusinessId == businessId);
             if (business == null) return ServiceResult<AppointmentDto>.NotFound("Negocio no encontrado.");
@@ -87,7 +90,11 @@ namespace AgendaApp.Services
             if (!staffOk) return ServiceResult<AppointmentDto>.NotFound("El colaborador no existe o está inactivo.");
 
             // Cliente existente o nuevo (si el teléfono ya existe en la empresa, se reutiliza)
-            var clientResult = await ResolveClientAsync(businessId, dto);
+            // Segundos enteros: Appointments.CreatedAt es datetime sin fracciones en MySQL (tabla heredada)
+            // y Clients.CreatedAt es datetime(6); así las dos guardan el mismo valor
+            var ahora = DateTime.UtcNow;
+            ahora = new DateTime(ahora.Ticks - ahora.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc);
+            var clientResult = await ResolveClientAsync(businessId, dto, actualizarContacto, ahora);
             if (!clientResult.Success) return ServiceResult<AppointmentDto>.BadRequest(clientResult.Error!);
             var clientId = clientResult.Data;
 
@@ -137,7 +144,8 @@ namespace AgendaApp.Services
                 Source = source,
                 CreatedByUserId = byUserId,
                 Status = outOfHours ? AppointmentStatus.PendingOutOfHours : AppointmentStatus.Pending,
-                CreatedAt = DateTime.UtcNow
+                // Igual que Client.CreatedAt si el cliente se creó aquí (ContactoCliente lo usa)
+                CreatedAt = ahora
             };
             _context.Appointments.Add(appointment);
             AddHistory(appointment.AppointmentId, "Created", null, appointment.Status, byUserId,
@@ -163,14 +171,14 @@ namespace AgendaApp.Services
         }
 
         // Contrato anterior: se respeta el inicio y se recalcula el fin con el servicio
-        public Task<ServiceResult<AppointmentDto>> CreateAppointmentAsync(AppointmentCreateDto dto) =>
-            BookAsync(dto.BusinessId, null, "Mostrador", new AppointmentBookDto
+        public Task<ServiceResult<AppointmentDto>> CreateAppointmentAsync(AppointmentCreateDto dto, Guid byUserId) =>
+            BookAsync(dto.BusinessId, byUserId, "Mostrador", new AppointmentBookDto
             {
                 ClientId = dto.ClientId,
                 UserId = dto.UserId,
                 ServiceId = dto.serviceId,
                 Start = dto.DateTimeStart
-            });
+            }, actualizarContacto: false);
 
         // ---------------------------------------------------------------- Reprogramar / ceder
 
@@ -617,7 +625,7 @@ namespace AgendaApp.Services
 
         // ---------------------------------------------------------------- Auxiliares
 
-        private async Task<ServiceResult<Guid>> ResolveClientAsync(Guid businessId, AppointmentBookDto dto)
+        private async Task<ServiceResult<Guid>> ResolveClientAsync(Guid businessId, AppointmentBookDto dto, bool actualizarContacto, DateTime ahora)
         {
             if (dto.ClientId.HasValue)
             {
@@ -634,6 +642,8 @@ namespace AgendaApp.Services
             var email = dto.NewClient.Email?.Trim().ToLowerInvariant();
             var existing = await _context.Clients.FirstOrDefaultAsync(c => c.BusinessId == businessId &&
                 ((phone != null && phone != "" && c.Phone == phone) || (email != null && email != "" && c.Email == email)));
+            if (existing != null && !actualizarContacto)
+                return ServiceResult<Guid>.Ok(existing.ClientId);
             if (existing != null)
             {
                 // Mantener los datos de contacto al día: el cliente pudo cambiar de número
@@ -653,7 +663,8 @@ namespace AgendaApp.Services
                 BusinessId = businessId,
                 Name = dto.NewClient.Name.Trim(),
                 Phone = string.IsNullOrWhiteSpace(phone) ? null : phone,
-                Email = string.IsNullOrWhiteSpace(email) ? null : email
+                Email = string.IsNullOrWhiteSpace(email) ? null : email,
+                CreatedAt = ahora
             };
             _context.Clients.Add(client);
             await _context.SaveChangesAsync();
@@ -701,6 +712,10 @@ namespace AgendaApp.Services
             ClientName = a.Client.Name,
             ClientPhone = a.Client.Phone,
             ClientEmail = a.Client.Email,
+            CreatedByUserId = a.CreatedByUserId,
+            // El cliente se creó con esta misma reserva (quien la hizo escribió su contacto): BookAsync
+            // les pone exactamente la misma marca de tiempo al cliente y al turno
+            ClientIsNewFromBooking = a.Client.CreatedAt == a.CreatedAt,
             UserId = a.UserId,
             UserName = a.User.Name,
             ServiceId = a.serviceId,

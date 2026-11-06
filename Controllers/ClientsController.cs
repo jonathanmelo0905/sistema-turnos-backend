@@ -33,7 +33,9 @@ namespace AgendaApp.Controllers
         }
 
         // GET /api/clients/search?q= — para reservar en mostrador (todo el personal).
-        // Sin el permiso de contactos, el teléfono y el correo se muestran enmascarados.
+        // Sin el permiso de contactos, el teléfono y el correo se muestran enmascarados (y el turno que
+        // se reserve con ese ClientId tampoco los revela: ContactoCliente). Por teléfono se busca con
+        // al menos 7 dígitos, para que no sirva de oráculo de qué números son clientes.
         [HttpGet("search")]
         public async Task<ActionResult<List<ClientSearchDto>>> Search([FromQuery] string? q)
         {
@@ -46,7 +48,7 @@ namespace AgendaApp.Controllers
             var lista = await _context.Clients.AsNoTracking()
                 .Where(c => c.BusinessId == _tenant.BusinessId &&
                     ((c.Name != null && c.Name.Contains(texto)) ||
-                     (digitos.Length >= 3 && c.Phone != null && c.Phone.Contains(digitos)) ||
+                     (digitos.Length >= 7 && c.Phone != null && c.Phone.Contains(digitos)) ||
                      (c.Email != null && c.Email.Contains(texto))))
                 .OrderBy(c => c.Name)
                 .Take(8)
@@ -64,8 +66,8 @@ namespace AgendaApp.Controllers
             if (!veContactos)
                 foreach (var c in lista)
                 {
-                    c.Phone = Enmascarar(c.Phone);
-                    c.Email = Enmascarar(c.Email);
+                    c.Phone = ContactoCliente.Enmascarar(c.Phone);
+                    c.Email = ContactoCliente.Enmascarar(c.Email);
                 }
 
             return Ok(lista);
@@ -112,16 +114,5 @@ namespace AgendaApp.Controllers
             };
         }
 
-        // "300 123 4567" → "300•••4567"
-        private static string? Enmascarar(string? valor)
-        {
-            if (string.IsNullOrWhiteSpace(valor) || valor.Length < 6) return valor == null ? null : "•••";
-            if (valor.Contains('@'))
-            {
-                var at = valor.IndexOf('@');
-                return valor[..Math.Min(2, at)] + "•••" + valor[at..];
-            }
-            return valor[..3] + "•••" + valor[^4..];
-        }
     }
 }

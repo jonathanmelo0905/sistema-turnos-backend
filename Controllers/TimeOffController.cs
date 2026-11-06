@@ -12,6 +12,7 @@ namespace AgendaApp.Controllers
     [ApiController]
     [Route("api/time-off")]
     [Authorize]
+    [ServiceFilter(typeof(ContactoClienteFilter))]
     public class TimeOffController : ControllerBase
     {
         private readonly ITimeOffService _timeOff;

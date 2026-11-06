@@ -64,7 +64,8 @@ namespace AgendaApp.Services
                 Email = client.Email,
                 Name = client.Name,
                 Phone = client.Phone,
-                Notes = client.Notes
+                Notes = client.Notes,
+                CreatedAt = DateTime.UtcNow
             };
 
             _context.Clients.Add(cliente);

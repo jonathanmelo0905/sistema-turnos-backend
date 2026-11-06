@@ -12,6 +12,7 @@ namespace AgendaApp.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
+    [ServiceFilter(typeof(ContactoClienteFilter))]
     public class AppointmentsController : ControllerBase
     {
         private readonly IAppointmentService _appointments;
@@ -58,7 +59,8 @@ namespace AgendaApp.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
             if (dto.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
 
-            return Map(await _appointments.BookAsync(_tenant.BusinessId, _tenant.UserId, "Mostrador", dto));
+            var actualizarContacto = await _tenant.HasPermissionAsync(PermissionCodes.ClientsContactsView);
+            return Map(await _appointments.BookAsync(_tenant.BusinessId, _tenant.UserId, "Mostrador", dto, actualizarContacto));
         }
 
         // Contrato anterior (fin explícito): se mantiene por compatibilidad
@@ -69,7 +71,7 @@ namespace AgendaApp.Controllers
             if (dto.UserId != _tenant.UserId && !await GestionaEquipo()) return Forbid();
 
             dto.BusinessId = _tenant.BusinessId;
-            return Map(await _appointments.CreateAppointmentAsync(dto));
+            return Map(await _appointments.CreateAppointmentAsync(dto, _tenant.UserId));
         }
 
         // POST /api/appointments/{id}/reschedule — otra hora y/o ceder a otro colaborador
