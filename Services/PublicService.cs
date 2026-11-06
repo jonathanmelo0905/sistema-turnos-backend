@@ -10,16 +10,17 @@ namespace AgendaApp.Services
     {
         Task<List<PublicBusinessListItemDto>> ListBusinessesAsync();
         Task<PublicBusinessDto?> GetBusinessAsync(string slug);
-        Task<ServiceResult<PublicBookResultDto>> BookAsync(string slug, PublicBookDto dto);
+        Task<ServiceResult<PublicBookResultDto>> BookAsync(string slug, string? accessToken, PublicBookDto dto);
         Task<ServiceResult<PublicMyAppointmentsDto>> MyAppointmentsAsync(string slug, string accessToken);
         Task<ServiceResult<PublicMyAppointmentsDto>> LookupAsync(string slug, PublicLookupDto dto);
         Task RequestAccessCodeAsync(string slug, string email);
         Task<ServiceResult<PublicMyAppointmentsDto>> VerifyAccessCodeAsync(string slug, PublicAccessVerifyDto dto);
         Task<ServiceResult<PublicMyAppointmentsDto>> AccessWithPasswordAsync(string slug, PublicAccessPasswordDto dto);
         Task<ServiceResult<bool>> SetPasswordAsync(string slug, string accessToken, string password);
-        Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, Guid appointmentId, PublicCancelDto dto);
-        Task<ServiceResult<PublicAppointmentDto>> RescheduleAsync(string slug, Guid appointmentId, PublicRescheduleDto dto);
-        Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto);
+        Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, string accessToken, Guid appointmentId, PublicCancelDto dto);
+        Task<ServiceResult<PublicAppointmentDto>> RescheduleAsync(string slug, string accessToken, Guid appointmentId, PublicRescheduleDto dto);
+        Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, string accessToken, Guid appointmentId, PublicReviewCreateDto dto);
+        Task LogoutAsync(string accessToken);
     }
 
     public class PublicService : IPublicService
@@ -167,7 +168,7 @@ namespace AgendaApp.Services
             };
         }
 
-        public async Task<ServiceResult<PublicBookResultDto>> BookAsync(string slug, PublicBookDto dto)
+        public async Task<ServiceResult<PublicBookResultDto>> BookAsync(string slug, string? accessToken, PublicBookDto dto)
         {
             var b = await FindBusinessAsync(slug);
             if (b == null) return ServiceResult<PublicBookResultDto>.NotFound("Empresa no encontrada.");
@@ -189,8 +190,7 @@ namespace AgendaApp.Services
             var nombre = dto.Client.Name.Trim();
             var tel = digits == "" ? null : digits;
             var email = string.IsNullOrEmpty(correo) ? null : correo;
-            var propio = string.IsNullOrWhiteSpace(dto.AccessToken) ? null
-                : await _context.Clients.FirstOrDefaultAsync(c => c.BusinessId == b.BusinessId && c.AccessToken == dto.AccessToken);
+            var propio = await ClienteDeSesionAsync(b.BusinessId, accessToken);
             var conCuenta = await _context.Clients
                 .Where(c => c.BusinessId == b.BusinessId && ((email != null && c.Email == email) || (tel != null && c.Phone == tel)))
                 .Select(c => c.ClientId).ToListAsync();
@@ -252,7 +252,8 @@ namespace AgendaApp.Services
                 };
 
             var client = await _context.Clients.FirstAsync(c => c.ClientId == result.Data!.ClientId);
-            client.AccessToken ??= NewToken();
+            // Con sesión se conserva el mismo token; si no, se abre una sesión nueva en este navegador
+            var token = propio != null ? accessToken!.Trim() : NuevaSesion(client.ClientId);
             client.CreatedAt ??= DateTime.UtcNow;
             client.TermsAcceptedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
@@ -262,7 +263,7 @@ namespace AgendaApp.Services
             var id = result.Data.AppointmentId;
             await _correos.EnviarAsync(id, TipoCorreoCita.Confirmacion);
             var a = (await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == id)).First();
-            return ServiceResult<PublicBookResultDto>.Ok(new PublicBookResultDto { Appointment = a, AccessToken = client.AccessToken, ClientName = client.Name ?? "", HasPassword = client.PasswordHash != null });
+            return ServiceResult<PublicBookResultDto>.Ok(new PublicBookResultDto { Appointment = a, AccessToken = token, ClientName = client.Name ?? "", HasPassword = client.PasswordHash != null });
         }
 
         public async Task<ServiceResult<PublicMyAppointmentsDto>> MyAppointmentsAsync(string slug, string accessToken)
@@ -270,11 +271,10 @@ namespace AgendaApp.Services
             var b = await FindBusinessAsync(slug);
             if (b == null) return ServiceResult<PublicMyAppointmentsDto>.NotFound("Empresa no encontrada.");
 
-            var client = await _context.Clients.AsNoTracking()
-                .FirstOrDefaultAsync(c => c.BusinessId == b.BusinessId && c.AccessToken == accessToken && accessToken != "");
-            if (client == null) return ServiceResult<PublicMyAppointmentsDto>.Unauthorized("No te reconocimos. Busca tus turnos con tu correo o teléfono.");
+            var client = await ClienteDeSesionAsync(b.BusinessId, accessToken);
+            if (client == null) return ServiceResult<PublicMyAppointmentsDto>.Unauthorized(SesionVencida);
 
-            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client));
+            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client, accessToken.Trim()));
         }
 
         public async Task<ServiceResult<PublicMyAppointmentsDto>> LookupAsync(string slug, PublicLookupDto dto)
@@ -283,26 +283,50 @@ namespace AgendaApp.Services
             if (b == null) return ServiceResult<PublicMyAppointmentsDto>.NotFound("Empresa no encontrada.");
 
             var contacto = dto.Contact.Trim().ToLowerInvariant();
-            var digitos = new string(contacto.Where(char.IsDigit).ToArray());
+            var digitos = Telefono(contacto);
             var codigo = dto.Code.Trim().ToLowerInvariant();
 
-            var candidatos = await _context.Clients
-                .Where(c => c.BusinessId == b.BusinessId &&
-                    ((c.Email != null && c.Email == contacto) || (digitos.Length >= 7 && c.Phone != null && c.Phone.Contains(digitos))))
-                .ToListAsync();
+            // Comparación exacta del correo o del celular normalizado (antes bastaba con que lo contuviera)
+            var candidatos = await ClientesPorContactoAsync(b.BusinessId, contacto, digitos, soloConClave: false);
+
+            var ahora = DateTime.UtcNow;
+            if (candidatos.Any(c => c.LookupBlockedUntil > ahora))
+                return ServiceResult<PublicMyAppointmentsDto>.Unauthorized(PausaLookup);
 
             foreach (var c in candidatos)
             {
                 var ids = await _context.Appointments.Where(a => a.ClientId == c.ClientId).Select(a => a.AppointmentId).ToListAsync();
-                if (!ids.Any(id => id.ToString("N").StartsWith(codigo))) continue;
+                if (codigo.Length < 6 || !ids.Any(id => id.ToString("N").StartsWith(codigo))) continue;
 
-                c.AccessToken ??= NewToken();
+                c.LookupAttempts = 0;
+                c.LookupBlockedUntil = null;
+                var token = NuevaSesion(c.ClientId);
                 await _context.SaveChangesAsync();
-                return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, c));
+                return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, c, token));
             }
 
-            return ServiceResult<PublicMyAppointmentsDto>.Unauthorized("No encontramos reservas con esos datos. Revisa el código que te dimos al reservar.");
+            // Fallo: cuenta un intento en cada cliente con ese contacto; al 5.º, pausa de 15 min
+            var pausado = false;
+            foreach (var c in candidatos)
+            {
+                c.LookupAttempts++;
+                if (c.LookupAttempts >= IntentosLookup)
+                {
+                    c.LookupAttempts = 0;
+                    c.LookupBlockedUntil = ahora.AddMinutes(MinutosPausaLookup);
+                    pausado = true;
+                }
+            }
+            if (candidatos.Count > 0) await _context.SaveChangesAsync();
+
+            return ServiceResult<PublicMyAppointmentsDto>.Unauthorized(pausado
+                ? PausaLookup
+                : "No encontramos reservas con esos datos. Revisa el código que te dimos al reservar.");
         }
+
+        private const int IntentosLookup = 5;
+        private const int MinutosPausaLookup = 15;
+        private const string PausaLookup = "Hiciste demasiados intentos. Espera 15 minutos o entra con un código que te enviamos al correo.";
 
         private const int MinutosCodigo = 10;
         private const int IntentosCodigo = 5;
@@ -359,9 +383,9 @@ namespace AgendaApp.Services
             client.AccessCodeHash = null;
             client.AccessCodeExpiresAt = null;
             client.AccessCodeAttempts = 0;
-            client.AccessToken ??= NewToken();
+            var token = NuevaSesion(client.ClientId);
             await _context.SaveChangesAsync();
-            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client));
+            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client, token));
         }
 
         public async Task<ServiceResult<PublicMyAppointmentsDto>> AccessWithPasswordAsync(string slug, PublicAccessPasswordDto dto)
@@ -370,19 +394,15 @@ namespace AgendaApp.Services
             if (b == null) return ServiceResult<PublicMyAppointmentsDto>.NotFound("Empresa no encontrada.");
 
             var contacto = dto.Contact.Trim().ToLowerInvariant();
-            var digitos = new string(contacto.Where(char.IsDigit).ToArray());
-            var candidatos = await _context.Clients
-                .Where(c => c.BusinessId == b.BusinessId && c.PasswordHash != null &&
-                    ((c.Email != null && c.Email == contacto) || (!contacto.Contains('@') && digitos.Length >= 7 && c.Phone != null && c.Phone.Contains(digitos))))
-                .ToListAsync();
+            var candidatos = await ClientesPorContactoAsync(b.BusinessId, contacto, Telefono(contacto), soloConClave: true);
 
             var client = candidatos.FirstOrDefault(c => BCrypt.Net.BCrypt.Verify(dto.Password, c.PasswordHash));
             if (client == null)
                 return ServiceResult<PublicMyAppointmentsDto>.Unauthorized("Correo, celular o contraseña incorrectos.");
 
-            client.AccessToken ??= NewToken();
+            var token = NuevaSesion(client.ClientId);
             await _context.SaveChangesAsync();
-            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client));
+            return ServiceResult<PublicMyAppointmentsDto>.Ok(await BuildMyAsync(b, client, token));
         }
 
         // Crear o cambiar la contraseña con la sesión del navegador (AccessToken)
@@ -391,9 +411,8 @@ namespace AgendaApp.Services
             var b = await FindBusinessAsync(slug);
             if (b == null) return ServiceResult<bool>.NotFound("Empresa no encontrada.");
 
-            var client = await _context.Clients
-                .FirstOrDefaultAsync(c => c.BusinessId == b.BusinessId && c.AccessToken == accessToken && accessToken != "");
-            if (client == null) return ServiceResult<bool>.Unauthorized("No te reconocimos. Vuelve a entrar a tus turnos.");
+            var client = await ClienteDeSesionAsync(b.BusinessId, accessToken);
+            if (client == null) return ServiceResult<bool>.Unauthorized(SesionVencida);
 
             client.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
             await _context.SaveChangesAsync();
@@ -408,14 +427,16 @@ namespace AgendaApp.Services
         private static string HashCodigo(Guid clientId, string codigo) =>
             Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{clientId:N}:{codigo}")));
 
-        public async Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, Guid appointmentId, PublicCancelDto dto)
+        public async Task<ServiceResult<PublicAppointmentDto>> CancelAsync(string slug, string accessToken, Guid appointmentId, PublicCancelDto dto)
         {
             var b = await FindBusinessAsync(slug);
             if (b == null) return ServiceResult<PublicAppointmentDto>.NotFound("Empresa no encontrada.");
 
             var a = await _context.Appointments.Include(x => x.Client)
                 .FirstOrDefaultAsync(x => x.AppointmentId == appointmentId && x.BusinessId == b.BusinessId);
-            if (a == null || a.Client.AccessToken != dto.AccessToken)
+            var sesion = await ClienteDeSesionAsync(b.BusinessId, accessToken);
+            if (sesion == null) return ServiceResult<PublicAppointmentDto>.Unauthorized(SesionVencida);
+            if (a == null || a.ClientId != sesion.ClientId)
                 return ServiceResult<PublicAppointmentDto>.NotFound("Turno no encontrado.");
 
             if (a.Status != AppointmentStatus.Pending && a.Status != AppointmentStatus.Confirmed && a.Status != AppointmentStatus.PendingOutOfHours)
@@ -431,14 +452,16 @@ namespace AgendaApp.Services
         }
 
         // Otra hora con la misma persona: reglas de la reserva sin sesión y el límite de cancelación
-        public async Task<ServiceResult<PublicAppointmentDto>> RescheduleAsync(string slug, Guid appointmentId, PublicRescheduleDto dto)
+        public async Task<ServiceResult<PublicAppointmentDto>> RescheduleAsync(string slug, string accessToken, Guid appointmentId, PublicRescheduleDto dto)
         {
             var b = await FindBusinessAsync(slug);
             if (b == null) return ServiceResult<PublicAppointmentDto>.NotFound("Empresa no encontrada.");
 
             var a = await _context.Appointments.AsNoTracking().Include(x => x.Client)
                 .FirstOrDefaultAsync(x => x.AppointmentId == appointmentId && x.BusinessId == b.BusinessId);
-            if (a == null || a.Client.AccessToken != dto.AccessToken)
+            var sesion = await ClienteDeSesionAsync(b.BusinessId, accessToken);
+            if (sesion == null) return ServiceResult<PublicAppointmentDto>.Unauthorized(SesionVencida);
+            if (a == null || a.ClientId != sesion.ClientId)
                 return ServiceResult<PublicAppointmentDto>.NotFound("Turno no encontrado.");
 
             if (a.Status != AppointmentStatus.Pending && a.Status != AppointmentStatus.Confirmed && a.Status != AppointmentStatus.PendingOutOfHours)
@@ -463,14 +486,16 @@ namespace AgendaApp.Services
             return ServiceResult<PublicAppointmentDto>.Ok((await LoadAsync(b.BusinessId, b.CancelLimitHours, x => x.AppointmentId == appointmentId)).First());
         }
 
-        public async Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, Guid appointmentId, PublicReviewCreateDto dto)
+        public async Task<ServiceResult<PublicAppointmentDto>> ReviewAsync(string slug, string accessToken, Guid appointmentId, PublicReviewCreateDto dto)
         {
             var b = await FindBusinessAsync(slug);
             if (b == null) return ServiceResult<PublicAppointmentDto>.NotFound("Empresa no encontrada.");
 
             var a = await _context.Appointments.Include(x => x.Client)
                 .FirstOrDefaultAsync(x => x.AppointmentId == appointmentId && x.BusinessId == b.BusinessId);
-            if (a == null || a.Client.AccessToken != dto.AccessToken)
+            var sesion = await ClienteDeSesionAsync(b.BusinessId, accessToken);
+            if (sesion == null) return ServiceResult<PublicAppointmentDto>.Unauthorized(SesionVencida);
+            if (a == null || a.ClientId != sesion.ClientId)
                 return ServiceResult<PublicAppointmentDto>.NotFound("Turno no encontrado.");
             if (a.Status != AppointmentStatus.Completed)
                 return ServiceResult<PublicAppointmentDto>.BadRequest("Solo puedes calificar una atención que ya se realizó.");
@@ -507,7 +532,7 @@ namespace AgendaApp.Services
         private Task<Business?> FindBusinessAsync(string slug) =>
             _context.Businesses.AsNoTracking().FirstOrDefaultAsync(b => b.Slug == slug.ToLower() && b.Status == BusinessStatus.Approved && b.IsPublished);
 
-        private async Task<PublicMyAppointmentsDto> BuildMyAsync(Business b, Client client)
+        private async Task<PublicMyAppointmentsDto> BuildMyAsync(Business b, Client client, string accessToken)
         {
             var clientId = client.ClientId;
             var todos = await LoadAsync(b.BusinessId, b.CancelLimitHours, a => a.ClientId == clientId);
@@ -518,7 +543,7 @@ namespace AgendaApp.Services
             return new PublicMyAppointmentsDto
             {
                 ClientName = client.Name ?? "",
-                AccessToken = client.AccessToken!,
+                AccessToken = accessToken,
                 Email = client.Email,
                 Phone = client.Phone,
                 HasPassword = client.PasswordHash != null,
@@ -596,6 +621,79 @@ namespace AgendaApp.Services
 
         public static string Code(Guid id) => id.ToString("N")[..6].ToUpperInvariant();
 
-        private static string NewToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+        // ---------------------------------------------------------------- Sesión del cliente (Fase 9 T8)
+
+        private const int DiasSesion = 90;
+        private const string SesionVencida = "Tu sesión se cerró o venció. Vuelve a entrar a tus turnos.";
+
+        // Abre una sesión (se guarda con el siguiente SaveChanges) y devuelve el token, que solo se entrega esta vez
+        private string NuevaSesion(Guid clientId)
+        {
+            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            var ahora = DateTime.UtcNow;
+            _context.ClientSessions.Add(new ClientSession
+            {
+                ClientSessionId = Guid.NewGuid(), ClientId = clientId, TokenHash = HashToken(token),
+                CreatedAt = ahora, LastUsedAt = ahora, ExpiresAt = ahora.AddDays(DiasSesion)
+            });
+            return token;
+        }
+
+        // Cliente de la sesión vigente en esta empresa, o null. Usarla la renueva (como mucho una escritura por hora).
+        private async Task<Client?> ClienteDeSesionAsync(Guid businessId, string? token)
+        {
+            if (string.IsNullOrWhiteSpace(token) || token.Length > 128) return null;
+            var hash = HashToken(token.Trim());
+            var ahora = DateTime.UtcNow;
+            var sesion = await _context.ClientSessions.Include(x => x.Client)
+                .FirstOrDefaultAsync(x => x.TokenHash == hash && x.ExpiresAt > ahora && x.Client.BusinessId == businessId);
+            if (sesion == null) return null;
+
+            if (sesion.LastUsedAt < ahora.AddHours(-1))
+            {
+                sesion.LastUsedAt = ahora;
+                sesion.ExpiresAt = ahora.AddDays(DiasSesion);
+                await _context.SaveChangesAsync();
+            }
+            return sesion.Client;
+        }
+
+        // "No soy yo": borra la sesión de este navegador (y de paso las vencidas del mismo cliente)
+        public async Task LogoutAsync(string accessToken)
+        {
+            if (string.IsNullOrWhiteSpace(accessToken) || accessToken.Length > 128) return;
+            var hash = HashToken(accessToken.Trim());
+            var sesion = await _context.ClientSessions.FirstOrDefaultAsync(x => x.TokenHash == hash);
+            if (sesion == null) return;
+            var ahora = DateTime.UtcNow;
+            var borrar = await _context.ClientSessions
+                .Where(x => x.ClientSessionId == sesion.ClientSessionId || (x.ClientId == sesion.ClientId && x.ExpiresAt <= ahora))
+                .ToListAsync();
+            _context.ClientSessions.RemoveRange(borrar);
+            await _context.SaveChangesAsync();
+        }
+
+        private static string HashToken(string token) =>
+            Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+
+        // Solo dígitos, sin el indicativo 57 de Colombia (3001234567 y +57 300 123 4567 son el mismo)
+        private static string Telefono(string? texto)
+        {
+            var d = new string((texto ?? "").Where(char.IsDigit).ToArray());
+            return d.Length == 12 && d.StartsWith("57") ? d[2..] : d;
+        }
+
+        // Clientes de la empresa con ese correo exacto o ese celular exacto (normalizado)
+        private async Task<List<Client>> ClientesPorContactoAsync(Guid businessId, string contacto, string digitos, bool soloConClave)
+        {
+            var esCorreo = contacto.Contains('@');
+            if (!esCorreo && digitos.Length < 7) return new();
+            var cola = esCorreo ? "" : digitos[^7..];
+            var q = _context.Clients.Where(c => c.BusinessId == businessId &&
+                (esCorreo ? c.Email == contacto : c.Phone != null && c.Phone.EndsWith(cola)));
+            if (soloConClave) q = q.Where(c => c.PasswordHash != null);
+            var lista = await q.ToListAsync();
+            return esCorreo ? lista : lista.Where(c => Telefono(c.Phone) == digitos).ToList();
+        }
     }
 }

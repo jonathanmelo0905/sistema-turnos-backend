@@ -101,9 +101,6 @@ namespace AgendaApp.Dtos
         [MaxLength(300)]
         public string? Notes { get; set; }
 
-        // Si el cliente ya fue recordado por este navegador
-        public string? AccessToken { get; set; }
-
         // Casilla de términos y privacidad (obligatoria)
         public bool AcceptTerms { get; set; }
 
@@ -211,18 +208,12 @@ namespace AgendaApp.Dtos
 
     public class PublicCancelDto
     {
-        [Required]
-        public string AccessToken { get; set; } = null!;
-
         [MaxLength(250)]
         public string? Reason { get; set; }
     }
 
     public class PublicRescheduleDto
     {
-        [Required]
-        public string AccessToken { get; set; } = null!;
-
         [Required]
         public DateTime Start { get; set; }
     }

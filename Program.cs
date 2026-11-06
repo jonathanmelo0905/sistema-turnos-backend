@@ -77,6 +77,7 @@ builder.Services.AddDbContext<AgendaProDbContext>(options =>
     new MySqlServerVersion(new Version(8, 0, 2)));
 });
 
+builder.Services.AddHttpClient<ITurnstileService, TurnstileService>();
 builder.Services.AddScoped<AvailabilityService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserServiceImpl>();
@@ -174,6 +175,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 var app = builder.Build();
+
+if (string.IsNullOrWhiteSpace(app.Configuration["Turnstile:SecretKey"]))
+    app.Logger.LogWarning("Captcha desactivado: falta Turnstile:SecretKey. Configurarlo antes de publicar.");
 
 // Empresas sin dirección pública (creadas antes de la Fase 4) reciben una
 using (var scope = app.Services.CreateScope())

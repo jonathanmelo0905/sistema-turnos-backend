@@ -47,9 +47,6 @@ namespace AgendaApp.Dtos
 
     public class PublicReviewCreateDto
     {
-        [Required]
-        public string AccessToken { get; set; } = null!;
-
         [Range(1, 5)]
         public int Rating { get; set; }
 

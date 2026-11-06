@@ -11,9 +11,9 @@ namespace AgendaApp.Context
         public string? Email { get; set; }
         public string? Notes { get; set; }
 
-        // Código privado con el que el navegador del cliente "lo recuerda" (sin cuenta)
-        [System.ComponentModel.DataAnnotations.MaxLength(64)]
-        public string? AccessToken { get; set; }
+        // Intentos fallidos de "buscar mis turnos" (código de reserva + contacto); a los 5 se pausa 15 min
+        public int LookupAttempts { get; set; }
+        public DateTime? LookupBlockedUntil { get; set; }
 
         public DateTime? CreatedAt { get; set; }
 

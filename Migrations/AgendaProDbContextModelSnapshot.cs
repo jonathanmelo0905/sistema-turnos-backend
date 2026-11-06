@@ -17,7 +17,7 @@ namespace AgendaApp.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.10")
+                .HasAnnotation("ProductVersion", "8.0.33")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
@@ -379,10 +379,6 @@ namespace AgendaApp.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
-                    b.Property<string>("AccessToken")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("char(36)");
 
@@ -391,6 +387,12 @@ namespace AgendaApp.Migrations
 
                     b.Property<string>("Email")
                         .HasColumnType("longtext");
+
+                    b.Property<int>("LookupAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LookupBlockedUntil")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Name")
                         .HasColumnType("longtext");
@@ -410,12 +412,49 @@ namespace AgendaApp.Migrations
 
                     b.HasKey("ClientId");
 
-                    b.HasIndex("AccessToken")
-                        .HasDatabaseName("IX_Clients_AccessToken");
-
                     b.HasIndex("BusinessId");
 
                     b.ToTable("Clients");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.ClientSession", b =>
+                {
+                    b.Property<Guid>("ClientSessionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("ClientSessionId"), "utf8mb4");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("char(36)")
+                        .UseCollation("utf8mb4_0900_ai_ci");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<Guid>("ClientId"), "utf8mb4");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LastUsedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("ClientSessionId");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ClientSessions_TokenHash");
+
+                    b.ToTable("ClientSessions");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.PasswordResetToken", b =>
@@ -1134,6 +1173,17 @@ namespace AgendaApp.Migrations
                         .IsRequired();
 
                     b.Navigation("Business");
+                });
+
+            modelBuilder.Entity("AgendaApp.Context.ClientSession", b =>
+                {
+                    b.HasOne("AgendaApp.Context.Client", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
                 });
 
             modelBuilder.Entity("AgendaApp.Context.PasswordResetToken", b =>

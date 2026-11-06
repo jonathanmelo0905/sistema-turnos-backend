@@ -36,10 +36,11 @@ namespace AgendaApp.Controllers
         // Reserva como invitado
         [HttpPost("businesses/{slug}/book")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
-        public async Task<ActionResult<PublicBookResultDto>> Book(string slug, [FromBody] PublicBookDto dto)
+        [Captcha]
+        public async Task<ActionResult<PublicBookResultDto>> Book(string slug, [FromHeader(Name = "X-Client-Token")] string? token, [FromBody] PublicBookDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            return Map(await _public.BookAsync(slug, dto));
+            return Map(await _public.BookAsync(slug, token, dto));
         }
 
         // Mis turnos con el código que guarda el navegador
@@ -53,6 +54,7 @@ namespace AgendaApp.Controllers
         // Mis turnos con correo/teléfono + código de reserva
         [HttpPost("businesses/{slug}/lookup")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        [Captcha]
         public async Task<ActionResult<PublicMyAppointmentsDto>> Lookup(string slug, [FromBody] PublicLookupDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -62,6 +64,7 @@ namespace AgendaApp.Controllers
         // Pide un código de acceso por correo. Siempre 200: no revela si el correo es de un cliente
         [HttpPost("businesses/{slug}/access/request")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        [Captcha]
         public async Task<IActionResult> AccessRequest(string slug, [FromBody] PublicAccessRequestDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -81,6 +84,7 @@ namespace AgendaApp.Controllers
         // Entrar con correo o celular + contraseña (opcional, creada desde Mis turnos)
         [HttpPost("businesses/{slug}/access/password")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        [Captcha]
         public async Task<ActionResult<PublicMyAppointmentsDto>> AccessPassword(string slug, [FromBody] PublicAccessPasswordDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -100,30 +104,42 @@ namespace AgendaApp.Controllers
             return Ok(new { message = "Listo: ya puedes entrar con tu contraseña." });
         }
 
+        // "No soy yo": revoca la sesión de este navegador. Siempre 204
+        [HttpPost("businesses/{slug}/access/logout")]
+        [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        public async Task<IActionResult> Logout(string slug, [FromHeader(Name = "X-Client-Token")] string? token)
+        {
+            if (!string.IsNullOrWhiteSpace(token)) await _public.LogoutAsync(token);
+            return NoContent();
+        }
+
         [HttpPost("businesses/{slug}/appointments/{id:guid}/cancel")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
-        public async Task<ActionResult<PublicAppointmentDto>> Cancel(string slug, Guid id, [FromBody] PublicCancelDto dto)
+        public async Task<ActionResult<PublicAppointmentDto>> Cancel(string slug, Guid id, [FromHeader(Name = "X-Client-Token")] string? token, [FromBody] PublicCancelDto dto)
         {
+            if (string.IsNullOrWhiteSpace(token)) return Unauthorized("Vuelve a entrar a tus turnos.");
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            return Map(await _public.CancelAsync(slug, id, dto));
+            return Map(await _public.CancelAsync(slug, token, id, dto));
         }
 
         // Reprogramar: otra hora con la misma persona
         [HttpPost("businesses/{slug}/appointments/{id:guid}/reschedule")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
-        public async Task<ActionResult<PublicAppointmentDto>> Reschedule(string slug, Guid id, [FromBody] PublicRescheduleDto dto)
+        public async Task<ActionResult<PublicAppointmentDto>> Reschedule(string slug, Guid id, [FromHeader(Name = "X-Client-Token")] string? token, [FromBody] PublicRescheduleDto dto)
         {
+            if (string.IsNullOrWhiteSpace(token)) return Unauthorized("Vuelve a entrar a tus turnos.");
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            return Map(await _public.RescheduleAsync(slug, id, dto));
+            return Map(await _public.RescheduleAsync(slug, token, id, dto));
         }
 
         // Calificar una atención (solo turnos atendidos, una vez)
         [HttpPost("businesses/{slug}/appointments/{id:guid}/review")]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
-        public async Task<ActionResult<PublicAppointmentDto>> Review(string slug, Guid id, [FromBody] PublicReviewCreateDto dto)
+        public async Task<ActionResult<PublicAppointmentDto>> Review(string slug, Guid id, [FromHeader(Name = "X-Client-Token")] string? token, [FromBody] PublicReviewCreateDto dto)
         {
+            if (string.IsNullOrWhiteSpace(token)) return Unauthorized("Vuelve a entrar a tus turnos.");
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            return Map(await _public.ReviewAsync(slug, id, dto));
+            return Map(await _public.ReviewAsync(slug, token, id, dto));
         }
 
         private ActionResult<T> Map<T>(ServiceResult<T> r) => r.ErrorType switch

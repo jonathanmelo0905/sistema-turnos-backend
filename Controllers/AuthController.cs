@@ -45,6 +45,7 @@ namespace AgendaApp.Controllers
         [HttpPost("register-business")]
         [AllowAnonymous]
         [EnableRateLimiting(RateLimitPolicies.PublicoEscritura)]
+        [Captcha]
         public async Task<IActionResult> RegisterBusiness([FromBody] RegisterBusinessDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);

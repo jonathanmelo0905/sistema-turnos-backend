@@ -13,6 +13,7 @@ namespace AgendaApp.Context
         public DbSet<Business> Businesses { get; set; }
         public DbSet<Plan> Plans { get; set; }
         public DbSet<Client> Clients {  get; set; }
+        public DbSet<ClientSession> ClientSessions { get; set; }
         public DbSet<Appointment> Appointments { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
@@ -127,7 +128,11 @@ namespace AgendaApp.Context
             modelBuilder.Entity<Business>().Property(b => b.Status).HasDefaultValue(BusinessStatus.Approved);
             // Sin FK a Users (evita el ciclo Business ↔ User); se valida en UsersController
             modelBuilder.Entity<Business>().Property(b => b.OwnerUserId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
-            modelBuilder.Entity<Client>().HasIndex(c => c.AccessToken).HasDatabaseName("IX_Clients_AccessToken");
+            modelBuilder.Entity<ClientSession>().HasKey(s => s.ClientSessionId);
+            modelBuilder.Entity<ClientSession>().Property(s => s.ClientSessionId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<ClientSession>().Property(s => s.ClientId).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
+            modelBuilder.Entity<ClientSession>().HasIndex(s => s.TokenHash).IsUnique().HasDatabaseName("IX_ClientSessions_TokenHash");
+            modelBuilder.Entity<ClientSession>().HasOne(s => s.Client).WithMany().HasForeignKey(s => s.ClientId).OnDelete(DeleteBehavior.Cascade);
 
             foreach (var prop in new[] { "ReviewId", "BusinessId", "AppointmentId", "ClientId", "UserId", "ServiceId", "RepliedByUserId" })
                 modelBuilder.Entity<Review>().Property(prop).HasCharSet("utf8mb4").UseCollation("utf8mb4_0900_ai_ci");
