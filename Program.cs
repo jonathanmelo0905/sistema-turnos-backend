@@ -179,6 +179,20 @@ var app = builder.Build();
 if (string.IsNullOrWhiteSpace(app.Configuration["Turnstile:SecretKey"]))
     app.Logger.LogWarning("Captcha desactivado: falta Turnstile:SecretKey. Configurarlo antes de publicar.");
 
+// Producción (Railway): con Db:MigrarAlIniciar=true aplica las migraciones pendientes al arrancar,
+// antes que cualquier otra cosa que lea la base
+if (app.Configuration.GetValue<bool>("Db:MigrarAlIniciar") && !args.Contains("crear-operador"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AgendaProDbContext>();
+    var pendientes = db.Database.GetPendingMigrations().ToList();
+    if (pendientes.Count > 0)
+    {
+        app.Logger.LogInformation("Aplicando {N} migración(es): {Lista}", pendientes.Count, string.Join(", ", pendientes));
+        db.Database.Migrate();
+    }
+}
+
 // Empresas sin dirección pública (creadas antes de la Fase 4) reciben una
 using (var scope = app.Services.CreateScope())
 {
@@ -234,6 +248,11 @@ app.UseRateLimiter();
 app.UseAuthorization(); 
 
 app.MapControllers();
+
+// Salud para Railway (y monitoreo): 200 si la API responde y llega a la base
+app.MapGet("/health", async (AgendaProDbContext db) =>
+    await db.Database.CanConnectAsync() ? Results.Ok(new { ok = true }) : Results.StatusCode(503))
+    .AllowAnonymous();
 
 app.Run();
 
