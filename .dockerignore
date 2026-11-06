@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+.git/
+correos-dev/
+scripts/
+wwwroot/archivos/
+*.user
+Dockerfile
+.dockerignore
